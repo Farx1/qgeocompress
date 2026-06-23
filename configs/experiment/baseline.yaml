@@ -1,0 +1,4 @@
+experiment: baseline
+compression: none
+dtype: fp32
+seed: 42

@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
+
+# ML artifacts
+runs/
+weights/
+data/
+*.pt
+*.onnx
+*.engine
+wandb/
+mlruns/
+
+# Results (keep structure, ignore large outputs)
+results/raw/*
+!results/raw/.gitkeep
+results/figures/*
+!results/figures/.gitkeep
+results/summaries/*
+!results/summaries/.gitkeep
+results/reports/*
+!results/reports/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/

@@ -1,0 +1,4 @@
+name: yolo_obb_small
+weights: yolo11n-obb.pt
+architecture: yolo11n-obb.yaml
+description: "Small YOLO-OBB model for fast iteration"

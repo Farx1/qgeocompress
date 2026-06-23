@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "qgeocompress"
+version = "0.1.0"
+description = "Reliability-preserving quantum-inspired compression for deployable geospatial AI"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Jules Barth" }]
+keywords = ["geospatial", "compression", "obb", "calibration", "dota"]
+dependencies = [
+    "ultralytics>=8.3.0",
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "numpy>=1.26.0",
+    "opencv-python>=4.9.0",
+    "pandas>=2.2.0",
+    "matplotlib>=3.8.0",
+    "pyyaml>=6.0.0",
+    "tqdm>=4.66.0",
+    "scikit-learn>=1.4.0",
+    "onnx>=1.16.0",
+    "onnxruntime>=1.18.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.4.0",
+]
+tensorrt = [
+    "nvidia-tensorrt>=10.0.0",
+]
+quantization = [
+    "torchao>=0.4.0",
+]
+
+[project.scripts]
+qgeo-train = "qgeocompress.cli.train_baseline:main"
+qgeo-compress = "qgeocompress.cli.compress_model:main"
+qgeo-benchmark = "qgeocompress.cli.benchmark_inference:main"
+qgeo-calibrate = "qgeocompress.cli.calibrate_model:main"
+qgeo-prepare = "qgeocompress.cli.prepare_dataset:main"
+qgeo-report = "qgeocompress.cli.make_report:main"
+qgeo-eval-calibration = "qgeocompress.cli.evaluate_calibration:main"
+qgeo-calibration-report = "qgeocompress.cli.make_calibration_report:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/qgeocompress"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["src", "configs", "scripts", "tests", "README.md", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

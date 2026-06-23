@@ -1,0 +1,5 @@
+name: dota
+task: obb
+data_yaml: DOTAv1.yaml
+imgsz: 1024
+description: "DOTA v1 — main experimentation dataset"

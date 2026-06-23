@@ -1,0 +1,6 @@
+name: dota128
+task: obb
+# Ultralytics built-in YAML; auto-downloads on first use
+data_yaml: dota128.yaml
+imgsz: 640
+description: "128-image DOTA subset for pipeline debugging"

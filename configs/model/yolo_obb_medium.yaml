@@ -1,0 +1,4 @@
+name: yolo_obb_medium
+weights: yolo11s-obb.pt
+architecture: yolo11s-obb.yaml
+description: "Medium YOLO-OBB model for DOTA full runs"

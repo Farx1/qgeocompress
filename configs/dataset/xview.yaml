@@ -1,0 +1,5 @@
+name: xview
+task: detect
+data_yaml: xView.yaml
+imgsz: 640
+description: "xView satellite detection (extension)"

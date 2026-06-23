@@ -1,0 +1,4 @@
+experiment: fp16
+compression: fp16
+dtype: fp16
+seed: 42

@@ -1,0 +1,8 @@
+experiment: low_rank
+compression: low-rank
+rank_ratio: 0.5
+target_layers:
+  - backbone
+  - neck
+finetune_epochs: 3
+seed: 42
