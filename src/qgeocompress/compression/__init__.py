@@ -49,17 +49,25 @@ def compress_model(
         device = kwargs.get("device", "cpu")
         eval_map50_fn = kwargs.get("eval_map50_fn")
         max_probe_layers = kwargs.get("max_probe_layers")
+        data_yaml = kwargs.get("data_yaml")
+        run_label = kwargs.get("run_label")
+        sensitivity_path = kwargs.get("sensitivity_report_path")
         report = run_structural_probe(
             weights,
-            dataset=dataset,
+            dataset=kwargs.get("dataset", "dota128"),
             rank_ratio=rank_ratio,
             target_layers=target_layers,
             imgsz=imgsz,
             device=device,
             eval_map50_fn=eval_map50_fn,
             max_probe_layers=max_probe_layers,
+            data_yaml=data_yaml,
         )
-        out_path = save_sensitivity_report(report)
+        out_path = save_sensitivity_report(
+            report,
+            path=Path(sensitivity_path) if sensitivity_path else None,
+            run_label=run_label,
+        )
         meta.update({
             "status": "ok",
             "ultralytics_compatible": False,
@@ -151,7 +159,11 @@ def compress_model(
         selection_strategy = kwargs.get("selection_strategy", "all")
         max_replaced_layers = kwargs.get("max_replaced_layers")
         sensitivity_report = kwargs.get("sensitivity_report")
-        if sensitivity_report is None and selection_strategy == "sensitivity":
+        max_map50_drop = float(kwargs.get("max_map50_drop", 0.03))
+        sensitivity_file = kwargs.get("sensitivity_file")
+        if sensitivity_report is None and sensitivity_file:
+            sensitivity_report = load_sensitivity_report(Path(sensitivity_file))
+        elif sensitivity_report is None and selection_strategy == "sensitivity":
             try:
                 sensitivity_report = load_sensitivity_report()
             except FileNotFoundError:
@@ -165,6 +177,7 @@ def compress_model(
             max_replaced_layers=max_replaced_layers,
             selection_strategy=selection_strategy,
             sensitivity_report=sensitivity_report,
+            max_map50_drop=max_map50_drop,
         )
         meta.update(meta_slr)
 
@@ -180,18 +193,27 @@ def compress_model(
         if bn_batches > 0:
             ran = recalibrate_batchnorm(
                 model,
-                kwargs.get("dataset", "dota128"),
+                kwargs.get("dataset"),
                 int(kwargs.get("imgsz", 640)),
                 kwargs.get("device", "cpu"),
                 num_batches=bn_batches,
+                data_yaml=kwargs.get("bn_data_yaml") or kwargs.get("data_yaml"),
             )
             meta["bn_recalibration_batches_ran"] = ran
+            meta["bn_data_yaml"] = kwargs.get("bn_data_yaml") or kwargs.get("data_yaml")
 
         suffix = ""
-        if max_replaced_layers:
+        run_label = kwargs.get("run_label")
+        if run_label:
+            suffix = f"_{run_label}"
+        elif max_replaced_layers:
             suffix = f"_top{max_replaced_layers}"
-        if selection_strategy == "sensitivity":
+        if selection_strategy == "pareto-gain":
+            suffix += "_pareto"
+        elif selection_strategy == "sensitivity":
             suffix += "_sens"
+        elif selection_strategy == "sensitivity":
+            suffix = "_sens"
         out_path = output_dir / f"structural_low_rank_r{rank_ratio:.3f}{suffix}.pt"
         model.save(str(out_path))
         meta.update({

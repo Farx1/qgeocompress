@@ -70,13 +70,14 @@ def measure_local_output_error(
 
 def _collect_probe_inputs(
     model: YOLO,
-    dataset: str,
+    dataset: str | None,
     imgsz: int,
     device: str,
     max_batches: int = 4,
+    data_yaml: str | Path | None = None,
 ) -> list[torch.Tensor]:
     """Capture intermediate-ready tensors by running the first backbone conv."""
-    images = [str(p) for _, p in list_val_images(dataset)[:max_batches]]
+    images = [str(p) for _, p in list_val_images(dataset=dataset, data_yaml=data_yaml)[:max_batches]]
     if not images:
         return []
 
@@ -119,12 +120,14 @@ def probe_single_layer(
     local_output_error: float | None,
 ) -> dict[str, Any]:
     before, after, gain = layer_param_gain_pct(conv, rank_ratio)
+    gain_abs = before - after
     drop = None if map50_after is None else round(max(0.0, baseline_map50 - map50_after), 6)
     score = compute_compressibility_score(gain, local_output_error, drop)
     return {
         "layer_name": layer_name,
         "params_before": before,
         "params_after": after,
+        "param_gain_abs": gain_abs,
         "param_gain_pct": gain,
         "local_output_error": local_output_error,
         "map50_single_layer": map50_after,
@@ -145,6 +148,35 @@ def select_layers_by_sensitivity(
     return [r["layer_name"] for r in ranked[:max_layers]]
 
 
+def select_layers_by_pareto_gain(
+    probe_results: list[dict[str, Any]],
+    max_layers: int,
+    max_map50_drop: float = 0.03,
+) -> list[str]:
+    """Filter low-impact layers, then rank by absolute parameter savings."""
+    eligible = [
+        r for r in probe_results
+        if (r.get("map50_drop") is None) or (r.get("map50_drop") or 0.0) <= max_map50_drop
+    ]
+    ranked = sorted(
+        eligible,
+        key=lambda r: r.get("param_gain_abs") or 0,
+        reverse=True,
+    )
+    return [r["layer_name"] for r in ranked[:max_layers]]
+
+
+def select_layers(
+    probe_results: list[dict[str, Any]],
+    max_layers: int,
+    strategy: str = "sensitivity",
+    max_map50_drop: float = 0.03,
+) -> list[str]:
+    if strategy == "pareto-gain":
+        return select_layers_by_pareto_gain(probe_results, max_layers, max_map50_drop=max_map50_drop)
+    return select_layers_by_sensitivity(probe_results, max_layers)
+
+
 def _restore_single_layer(
     pytorch_model: nn.Module,
     layer_name: str,
@@ -155,7 +187,7 @@ def _restore_single_layer(
 
 def run_structural_probe(
     weights: Path | str,
-    dataset: str = "dota128",
+    dataset: str | None = "dota128",
     rank_ratio: float = 0.84,
     target_layers: list[str] | None = None,
     imgsz: int = 640,
@@ -163,6 +195,7 @@ def run_structural_probe(
     eval_map50_fn: Any | None = None,
     max_probe_layers: int | None = None,
     activation_batches: int = 4,
+    data_yaml: str | Path | None = None,
 ) -> dict[str, Any]:
     """Probe each candidate layer individually (replace → eval → discard)."""
     baseline = YOLO(str(weights), task="obb")
@@ -174,7 +207,9 @@ def run_structural_probe(
     if max_probe_layers is not None:
         candidates = candidates[:max_probe_layers]
 
-    sample_inputs = _collect_probe_inputs(baseline, dataset, imgsz, device, activation_batches)
+    sample_inputs = _collect_probe_inputs(
+        baseline, dataset, imgsz, device, activation_batches, data_yaml=data_yaml
+    )
     layer_results: list[dict[str, Any]] = []
 
     for layer_name, conv in candidates:
@@ -214,6 +249,7 @@ def run_structural_probe(
         "method": "structural-probe",
         "rank_ratio": rank_ratio,
         "dataset": dataset,
+        "data_yaml": str(data_yaml) if data_yaml else None,
         "baseline_map50": baseline_map50,
         "num_candidates": len(candidates),
         "layers": ranked,
@@ -221,8 +257,16 @@ def run_structural_probe(
     }
 
 
-def save_sensitivity_report(report: dict[str, Any], path: Path | None = None) -> Path:
-    path = path or project_root() / "results" / "summaries" / "structural_layer_sensitivity.json"
+def save_sensitivity_report(
+    report: dict[str, Any],
+    path: Path | None = None,
+    run_label: str | None = None,
+) -> Path:
+    if path is None:
+        stem = "structural_layer_sensitivity"
+        if run_label:
+            stem = f"{stem}_{run_label}"
+        path = project_root() / "results" / "summaries" / f"{stem}.json"
     save_json(report, path)
     return path
 
@@ -251,13 +295,14 @@ def _load_bchw_tensor(path: str, imgsz: int, device: str) -> torch.Tensor:
 
 def recalibrate_batchnorm(
     model: YOLO,
-    dataset: str,
-    imgsz: int,
-    device: str,
+    dataset: str | None = None,
+    imgsz: int = 640,
+    device: str = "cpu",
     num_batches: int = 20,
+    data_yaml: str | Path | None = None,
 ) -> int:
     """Run train-mode forward passes to refresh BatchNorm running statistics."""
-    images = [str(p) for _, p in list_val_images(dataset)[:num_batches]]
+    images = [str(p) for _, p in list_val_images(dataset=dataset, data_yaml=data_yaml)[:num_batches]]
     if not images:
         return 0
 

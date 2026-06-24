@@ -44,6 +44,17 @@ def test_select_layers_by_sensitivity():
     assert select_layers_by_sensitivity(rows, 2) == ["b", "c"]
 
 
+def test_select_layers_by_pareto_gain_prefers_large_savings():
+    from qgeocompress.compression.layer_sensitivity import select_layers_by_pareto_gain
+
+    rows = [
+        {"layer_name": "small", "map50_drop": 0.0, "param_gain_abs": 100},
+        {"layer_name": "big", "map50_drop": 0.02, "param_gain_abs": 50000},
+        {"layer_name": "bad", "map50_drop": 0.10, "param_gain_abs": 90000},
+    ]
+    assert select_layers_by_pareto_gain(rows, 2) == ["big", "small"]
+
+
 def test_layer_param_gain_positive():
     conv = nn.Conv2d(32, 64, 3, padding=1)
     before, after, gain = layer_param_gain_pct(conv, 0.5)

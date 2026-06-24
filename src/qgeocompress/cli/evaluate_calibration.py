@@ -20,6 +20,7 @@ from qgeocompress.models.load_model import extract_detection_metrics
 from qgeocompress.utils.config import make_run_id, project_root, save_json
 from qgeocompress.utils.device import resolve_device
 from qgeocompress.utils.logging import setup_logging
+from qgeocompress.data.prepare_dota import resolve_data_yaml
 from qgeocompress.utils.paths import resolve_baseline_weights
 
 
@@ -32,6 +33,8 @@ def _calibration_run_id(
 ) -> str:
     if compression in (None, "none", "baseline"):
         prefix = "calibration_baseline"
+        if run_label:
+            prefix = f"{prefix}_{run_label}"
     elif compression == "structural-low-rank":
         prefix = f"calibration_structural_r{rank_ratio:.3f}" if rank_ratio is not None else "calibration_structural"
         if run_label:
@@ -61,6 +64,7 @@ def _has_structural_layers(model: YOLO) -> bool:
 def evaluate_calibration(
     weights: Path,
     dataset: str = "dota128",
+    data_yaml: str | Path | None = None,
     compression: str = "baseline",
     rank_ratio: float | None = None,
     source_run_id: str | None = None,
@@ -73,11 +77,13 @@ def evaluate_calibration(
 ) -> dict[str, Any]:
     device = resolve_device(device)
     model = YOLO(str(weights), task="obb")
+    yaml_path = resolve_data_yaml(dataset=dataset, data_yaml=data_yaml)
 
-    gt_by_image = load_ground_truth_for_dataset(dataset)
+    gt_by_image = load_ground_truth_for_dataset(dataset=dataset, data_yaml=yaml_path)
     pred_by_image = run_yolo_predictions(
         model,
         dataset=dataset,
+        data_yaml=yaml_path,
         conf_threshold=conf_threshold,
         imgsz=imgsz,
         device=device,
@@ -90,13 +96,12 @@ def evaluate_calibration(
     )
     cal_metrics = compute_calibration_metrics(matching)
 
-    data_yaml_path = __import__("qgeocompress.data.prepare_dota", fromlist=["get_data_yaml"]).get_data_yaml(dataset)
     if _has_structural_layers(model):
         from qgeocompress.evaluation.obb_validate import validate_no_fuse
 
-        val_results = validate_no_fuse(model, data_yaml_path, imgsz=imgsz, device=device)
+        val_results = validate_no_fuse(model, yaml_path, imgsz=imgsz, device=device)
     else:
-        val_results = model.val(data=data_yaml_path, imgsz=imgsz, device=device, verbose=False)
+        val_results = model.val(data=yaml_path, imgsz=imgsz, device=device, verbose=False)
     det_metrics = extract_detection_metrics(val_results)
 
     run_id = _calibration_run_id(compression, rank_ratio, iou_threshold, run_label=run_label, weights=weights)
@@ -125,6 +130,7 @@ def evaluate_calibration(
         "run_id": run_id,
         "source_run_id": source_run_id,
         "dataset": dataset,
+        "data_yaml": yaml_path,
         "compression": compression,
         "rank_ratio": rank_ratio,
         "run_label": run_label,
@@ -148,6 +154,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Evaluate GT-matched calibration for YOLO-OBB")
     parser.add_argument("--weights", type=Path, required=True)
     parser.add_argument("--dataset", default="dota128")
+    parser.add_argument("--data-yaml", type=Path, default=None, help="Ultralytics data YAML (overrides --dataset)")
     parser.add_argument("--compression", default="baseline")
     parser.add_argument("--rank-ratio", type=float, default=None)
     parser.add_argument("--source-run-id", default=None)
@@ -172,6 +179,7 @@ def main(argv: list[str] | None = None) -> None:
     summary = evaluate_calibration(
         weights=weights,
         dataset=args.dataset,
+        data_yaml=args.data_yaml,
         compression=args.compression,
         rank_ratio=args.rank_ratio,
         source_run_id=args.source_run_id,

@@ -11,7 +11,7 @@ from ultralytics.data.utils import check_det_dataset
 from ultralytics.utils.metrics import batch_probiou
 from ultralytics.utils.ops import xyxyxyxy2xywhr
 
-from qgeocompress.data.prepare_dota import get_data_yaml
+from qgeocompress.data.prepare_dota import get_data_yaml, resolve_data_yaml
 
 IoUMode = Literal["obb", "axis_aligned"]
 
@@ -63,10 +63,13 @@ def _image_extensions() -> set[str]:
     return {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
 
 
-def list_val_images(dataset: str) -> list[tuple[str, Path]]:
-    """Return (image_id, image_path) pairs for the validation split."""
-    data_yaml = get_data_yaml(dataset)
-    info = check_det_dataset(data_yaml)
+def list_val_images(
+    dataset: str | None = None,
+    data_yaml: str | Path | None = None,
+) -> list[tuple[str, Path]]:
+    """Return (image_id, image_path) pairs for the validation split in a data YAML."""
+    yaml_path = resolve_data_yaml(dataset=dataset, data_yaml=data_yaml)
+    info = check_det_dataset(yaml_path)
     val_path = info.get("val") or info.get("train")
     if not val_path:
         raise FileNotFoundError(f"No val split found for dataset {dataset}")
@@ -136,14 +139,17 @@ def load_yolo_obb_label_file(
     return detections
 
 
-def load_ground_truth_for_dataset(dataset: str) -> dict[str, list[OBBDetection]]:
-    """Load all GT OBB annotations keyed by image_id."""
-    data_yaml = get_data_yaml(dataset)
-    info = check_det_dataset(data_yaml)
+def load_ground_truth_for_dataset(
+    dataset: str | None = None,
+    data_yaml: str | Path | None = None,
+) -> dict[str, list[OBBDetection]]:
+    """Load all GT OBB annotations keyed by image_id for the val split."""
+    yaml_path = resolve_data_yaml(dataset=dataset, data_yaml=data_yaml)
+    info = check_det_dataset(yaml_path)
     dataset_root = Path(info.get("path", "")) if info.get("path") else None
 
     gt_by_image: dict[str, list[OBBDetection]] = {}
-    for image_id, image_path in list_val_images(dataset):
+    for image_id, image_path in list_val_images(dataset=dataset, data_yaml=data_yaml):
         img = cv2.imread(str(image_path))
         if img is None:
             continue
@@ -324,14 +330,15 @@ def predictions_from_yolo_result(result, image_id: str, conf_threshold: float) -
 
 def run_yolo_predictions(
     model,
-    dataset: str,
+    dataset: str | None = None,
+    data_yaml: str | Path | None = None,
     conf_threshold: float = 0.001,
     imgsz: int = 640,
     device: str | None = None,
 ) -> dict[str, list[OBBDetection]]:
     """Run YOLO-OBB inference on the validation split."""
     pred_by_image: dict[str, list[OBBDetection]] = {}
-    images = list_val_images(dataset)
+    images = list_val_images(dataset=dataset, data_yaml=data_yaml)
     paths = [str(p) for _, p in images]
     if not paths:
         return pred_by_image

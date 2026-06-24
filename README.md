@@ -198,6 +198,64 @@ Probe output: `results/summaries/structural_layer_sensitivity.json` (per-layer `
 
 Quick debug probe (first N layers only): add `--probe-max-layers 3`.
 
+### 10. Post-training pipeline (hold-out + quality gate)
+
+Strict split: **80 train / 24 select / 24 test** — never use test for probe or BN.
+
+```text
+training → baseline eval (test) → probe (select) → selective compress
+→ BN recalibration (train) → eval + calibration (test) → quality gate → export
+```
+
+```bash
+# 1. Create split
+python scripts/create_dota128_holdout.py --seed 42
+
+# 2. Train baseline (train=80, val=select for Ultralytics monitoring)
+python scripts/train_baseline.py \
+  --data-yaml datasets/dota128_holdout/dota128_holdout_select.yaml \
+  --epochs 10 --project runs/obb/runs --name baseline_holdout
+
+BEST="runs/obb/runs/obb/runs/baseline_holdout/weights/best.pt"
+HOLDOUT=datasets/dota128_holdout
+
+# 3. Baseline reference on test
+python scripts/evaluate_calibration.py \
+  --weights "$BEST" --data-yaml "$HOLDOUT/dota128_holdout_test.yaml" \
+  --compression baseline --run-label holdout_test_baseline
+
+# 4. Probe on select (never test)
+python scripts/compress_model.py \
+  --method structural-probe --rank-ratio 0.84 --weights "$BEST" \
+  --data-yaml "$HOLDOUT/dota128_holdout_select.yaml" \
+  --run-label holdout_select
+
+# 5. Selective compress — sensitivity or pareto-gain
+python scripts/compress_model.py \
+  --method structural-low-rank --rank-ratio 0.84 --weights "$BEST" \
+  --selection-strategy pareto-gain --max-replaced-layers 5 \
+  --sensitivity-file results/summaries/structural_layer_sensitivity_holdout_select.json \
+  --bn-data-yaml "$HOLDOUT/dota128_holdout_train.yaml" \
+  --eval-data-yaml "$HOLDOUT/dota128_holdout_test.yaml" \
+  --run-label holdout_top5_pareto
+
+# 6. Calibration on test + quality gate
+python scripts/evaluate_calibration.py \
+  --weights runs/compressed/structural_low_rank/structural_low_rank_r0.840_holdout_top5_pareto.pt \
+  --data-yaml "$HOLDOUT/dota128_holdout_test.yaml" \
+  --compression structural-low-rank --rank-ratio 0.84 \
+  --run-label holdout_top5_pareto_test
+
+python scripts/check_reliability_gate.py \
+  --baseline results/summaries/calibration_baseline_holdout_test_baseline_3cebaa50.json \
+  --candidate results/summaries/calibration_structural_r0.840_holdout_top5_sens_test_e751441c.json \
+  --compression-summary results/summaries/structural-low-rank_8438269f.json
+```
+
+Gate statuses: `deployable_compression_candidate` | `methodologically_valid` | `rejected`.
+
+Hold-out report: [`results/reports/qgeocompress_phase3b_holdout.md`](results/reports/qgeocompress_phase3b_holdout.md)
+
 ### 6. Calibrate and report
 
 ```bash

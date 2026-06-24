@@ -8,7 +8,7 @@ import numpy as np
 from ultralytics import YOLO
 
 from qgeocompress.calibration.ece import confident_error_rate, expected_calibration_error
-from qgeocompress.data.prepare_dota import get_data_yaml
+from qgeocompress.data.prepare_dota import get_data_yaml, resolve_data_yaml
 from qgeocompress.evaluation.system_metrics import benchmark_inference
 from qgeocompress.models.load_model import extract_detection_metrics, model_size_mb
 from qgeocompress.utils.config import load_dataset_config, load_model_config, make_run_id, project_root, save_json
@@ -33,6 +33,7 @@ def _collect_calibration_arrays(results) -> tuple[list[float], list[int]]:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Train baseline YOLO-OBB model")
     parser.add_argument("--dataset", default="dota128")
+    parser.add_argument("--data-yaml", type=Path, default=None, help="Ultralytics data YAML (overrides --dataset)")
     parser.add_argument("--model", default="yolo_obb_small")
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--imgsz", type=int, default=640)
@@ -49,10 +50,10 @@ def main(argv: list[str] | None = None) -> None:
 
     ds_cfg = load_dataset_config(args.dataset)
     model_cfg = load_model_config(args.model)
-    data_yaml = get_data_yaml(args.dataset)
+    data_yaml = resolve_data_yaml(dataset=args.dataset, data_yaml=args.data_yaml)
     weights = model_cfg.get("weights", "yolo11n-obb.pt")
 
-    logger.info("Training %s on %s for %d epochs", weights, args.dataset, args.epochs)
+    logger.info("Training %s on %s for %d epochs", weights, data_yaml, args.epochs)
     model = YOLO(weights)
     train_results = model.train(
         data=data_yaml,
@@ -84,6 +85,7 @@ def main(argv: list[str] | None = None) -> None:
 
     run_config = {
         "dataset": args.dataset,
+        "data_yaml": data_yaml,
         "model": args.model,
         "compression": "baseline",
         "epochs": args.epochs,
