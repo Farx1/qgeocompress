@@ -12,12 +12,24 @@ Baseline: retrained on train only (`runs/obb/runs/obb/runs/baseline_holdout/weig
 
 ## Results on **test split only**
 
-| Méthode | mAP50 | CER@0.8 | ECE | Params | Statut |
-| ------- | ----: | ------: | ---: | -----: | ------ |
+### sensitivity (Phase 3B initial)
+
+| Méthode | mAP50 | CER@0.8 | ECE | Params | Gate |
+| ------- | ----: | ------: | ---: | -----: | ---- |
 | baseline hold-out | **0.929** | **0.004** | 0.041 | ref | safe |
-| structural top-3 sens | **0.889** | 0.005 | 0.045 | −0.15% | **viable** |
-| structural top-5 sens | **0.879** | 0.005 | 0.043 | −0.21% | **viable** |
-| structural full r=0.84 | **0.266** | — | — | −7.34% | broken |
+| structural top-3 sens | 0.889 | 0.005 | 0.045 | −0.15% | methodologically_valid |
+| structural top-5 sens | 0.879 | 0.005 | 0.043 | −0.21% | methodologically_valid |
+| structural full r=0.84 | 0.266 | — | — | −7.34% | rejected |
+
+### pareto-gain (Phase 3B stack upgrade)
+
+| Méthode | mAP50 | CER@0.8 | ECE | Params | Gate |
+| ------- | ----: | ------: | ---: | -----: | ---- |
+| structural top-3 pareto | **0.932** | 0.004 | 0.040 | **−5.09%** | **deployable_compression_candidate** |
+| structural top-5 pareto | **0.933** | 0.005 | 0.042 | **−5.63%** | **deployable_compression_candidate** |
+| structural top-8 pareto | **0.925** | 0.005 | 0.039 | **−5.96%** | **deployable_compression_candidate** |
+
+**pareto-gain** filters `map50_drop ≤ 0.03` on the select split, then ranks by `param_gain_abs` (absolute parameter savings). It targets large backbone/neck convs (`model.5.conv`, `model.7.conv`, …) instead of small neck blocks chosen by compressibility score alone.
 
 ## Comparison vs in-sample Phase 3B
 
@@ -28,19 +40,23 @@ Baseline: retrained on train only (`runs/obb/runs/obb/runs/baseline_holdout/weig
 
 ## Conclusion
 
-> Sur un split hold-out strict, **la compression structurelle sélective conserve un avantage net** par rapport au remplacement global. Top-3/top-5 restent viables (mAP50 ≥ baseline − 0.10, CER@0.8 stable). Le remplacement global reste non viable (mAP50 = 0.266).
+> Sur un split hold-out strict, **la compression structurelle sélective conserve un avantage net** par rapport au remplacement global. Avec **sensitivity**, top-3/top-5 restent viables en performance mais la réduction de params est négligeable (~0.2 %). Avec **pareto-gain**, top-3/5/8 passent le quality gate complet (`deployable_compression_candidate`) : mAP50 ≥ baseline, CER@0.8 stable, **~5–6 % de params en moins**. Le remplacement global reste non viable (mAP50 = 0.266).
 
-**Critère de succès (mAP50 ≥ baseline − 0.10, CER stable) :** top-3 et top-5 **passent**.
+**Critère performance (mAP50 ≥ baseline − 0.10, CER stable) :** sensitivity top-3/5 et pareto top-3/5/8 **passent**.
 
-Note: param reduction on hold-out top-3/5 is small (~0.2%) because probe ranked smaller neck layers on this split; the scientific signal is **generalization of selective vs full**, not max compression.
+**Critère compression (≥ 2 % params) :** sensitivity **échoue** ; pareto-gain **passe**.
+
+Export ONNX/TensorRT reste **expérimental** (no-fuse requis pour `StructuralLowRankConv2d`).
 
 ## Artifacts
 
 - Split manifest: `datasets/dota128_holdout/holdout_manifest.json`
 - Probe (select): `results/summaries/structural_layer_sensitivity_holdout_select.json`
 - Baseline cal (test): `calibration_baseline_holdout_test_baseline_3cebaa50.json`
-- Top-5 cal (test): `calibration_structural_r0.840_holdout_top5_sens_test_e751441c.json`
-- Top-3 cal (test): `calibration_structural_r0.840_holdout_top3_sens_test_f634248b.json`
+- Top-5 cal sens (test): `calibration_structural_r0.840_holdout_top5_sens_test_e751441c.json`
+- Top-3 cal sens (test): `calibration_structural_r0.840_holdout_top3_sens_test_f634248b.json`
+- Top-5 pareto cal (test): `calibration_structural_r0.840_holdout_top5_pareto_test_f215351d.json`
+- Top-5 pareto gate: `reliability_gate_calibration_structural_r0.840_holdout_top5_pareto_test_f215351d.json`
 
 ## Reproduce
 
@@ -63,5 +79,18 @@ python scripts/compress_model.py \
   --data-yaml datasets/dota128_holdout/dota128_holdout_select.yaml \
   --run-label holdout_select
 
-# top-5 / top-3 / full — see Phase 3B plan for full flags
+# top-5 pareto-gain (recommended stack path)
+python scripts/compress_model.py \
+  --method structural-low-rank --rank-ratio 0.84 --weights "$BEST" \
+  --selection-strategy pareto-gain --max-replaced-layers 5 \
+  --sensitivity-file results/summaries/structural_layer_sensitivity_holdout_select.json \
+  --bn-data-yaml datasets/dota128_holdout/dota128_holdout_train.yaml \
+  --eval-data-yaml datasets/dota128_holdout/dota128_holdout_test.yaml \
+  --bn-recalibration-batches 20 \
+  --run-label holdout_top5_pareto
+
+python scripts/check_reliability_gate.py \
+  --baseline results/summaries/calibration_baseline_holdout_test_baseline_3cebaa50.json \
+  --candidate results/summaries/calibration_structural_r0.840_holdout_top5_pareto_test_*.json \
+  --compression-summary results/summaries/structural-low-rank_*.json
 ```

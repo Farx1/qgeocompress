@@ -29,12 +29,17 @@ results/summaries/*
 !results/summaries/*holdout*
 !results/summaries/structural_layer_sensitivity_holdout*
 !results/summaries/reliability_gate*
+!results/summaries/structural-low-rank_*.json
 results/reports/*
 !results/reports/.gitkeep
 !results/reports/qgeocompress_phase3*.md
 
 # Generated hold-out split (symlinks; regenerate via create_dota128_holdout.py)
 datasets/dota128_holdout/
+
+# Local Valohai ad-hoc outputs
+valohai_outputs/
+valohai_outputs_smoke/
 
 # IDE
 .idea/

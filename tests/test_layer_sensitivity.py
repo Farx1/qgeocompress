@@ -45,7 +45,10 @@ def test_select_layers_by_sensitivity():
 
 
 def test_select_layers_by_pareto_gain_prefers_large_savings():
-    from qgeocompress.compression.layer_sensitivity import select_layers_by_pareto_gain
+    from qgeocompress.compression.layer_sensitivity import (
+        _param_gain_abs,
+        select_layers_by_pareto_gain,
+    )
 
     rows = [
         {"layer_name": "small", "map50_drop": 0.0, "param_gain_abs": 100},
@@ -53,6 +56,8 @@ def test_select_layers_by_pareto_gain_prefers_large_savings():
         {"layer_name": "bad", "map50_drop": 0.10, "param_gain_abs": 90000},
     ]
     assert select_layers_by_pareto_gain(rows, 2) == ["big", "small"]
+    legacy = {"layer_name": "legacy", "params_before": 1000, "params_after": 200, "map50_drop": 0.0}
+    assert _param_gain_abs(legacy) == 800
 
 
 def test_layer_param_gain_positive():
