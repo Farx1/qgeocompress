@@ -1,0 +1,302 @@
+{
+  "method": "structural-probe",
+  "rank_ratio": 0.84,
+  "dataset": "dota128",
+  "data_yaml": "/home/jules-sayad-barth/projectscursor/qgeocompress/datasets/dota128_holdout/dota128_holdout_select.yaml",
+  "baseline_map50": 0.9590918036147079,
+  "num_candidates": 28,
+  "layers": [
+    {
+      "layer_name": "model.13.m.0.cv1.conv",
+      "params_before": 18464,
+      "params_after": 15840,
+      "param_gain_pct": 14.2114,
+      "local_output_error": null,
+      "map50_single_layer": 0.9598312025803089,
+      "map50_drop": 0.0,
+      "compressibility_score": 14211400.0
+    },
+    {
+      "layer_name": "model.4.m.0.cv1.conv",
+      "params_before": 4624,
+      "params_after": 3968,
+      "param_gain_pct": 14.1869,
+      "local_output_error": null,
+      "map50_single_layer": 0.9621985019476136,
+      "map50_drop": 0.0,
+      "compressibility_score": 14186900.0
+    },
+    {
+      "layer_name": "model.16.m.0.cv1.conv",
+      "params_before": 4624,
+      "params_after": 3968,
+      "param_gain_pct": 14.1869,
+      "local_output_error": null,
+      "map50_single_layer": 0.9592611065974762,
+      "map50_drop": 0.0,
+      "compressibility_score": 14186900.0
+    },
+    {
+      "layer_name": "model.6.m.0.m.0.cv2.conv",
+      "params_before": 9248,
+      "params_after": 8352,
+      "param_gain_pct": 9.6886,
+      "local_output_error": null,
+      "map50_single_layer": 0.9594190157710277,
+      "map50_drop": 0.0,
+      "compressibility_score": 9688600.0
+    },
+    {
+      "layer_name": "model.6.m.0.m.1.cv1.conv",
+      "params_before": 9248,
+      "params_after": 8352,
+      "param_gain_pct": 9.6886,
+      "local_output_error": null,
+      "map50_single_layer": 0.9591667337691546,
+      "map50_drop": 0.0,
+      "compressibility_score": 9688600.0
+    },
+    {
+      "layer_name": "model.3.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.9599099384124629,
+      "map50_drop": 0.0,
+      "compressibility_score": 7972300.0
+    },
+    {
+      "layer_name": "model.8.m.0.m.0.cv2.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.959133080802425,
+      "map50_drop": 0.0,
+      "compressibility_score": 7972300.0
+    },
+    {
+      "layer_name": "model.8.m.0.m.1.cv2.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.959092125396608,
+      "map50_drop": 0.0,
+      "compressibility_score": 7972300.0
+    },
+    {
+      "layer_name": "model.22.m.0.m.0.cv1.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.9592535200494193,
+      "map50_drop": 0.0,
+      "compressibility_score": 7972300.0
+    },
+    {
+      "layer_name": "model.22.m.0.m.0.cv2.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.9591511832719359,
+      "map50_drop": 0.0,
+      "compressibility_score": 7972300.0
+    },
+    {
+      "layer_name": "model.22.m.0.m.1.cv1.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.9590918036147079,
+      "map50_drop": 0.0,
+      "compressibility_score": 7972300.0
+    },
+    {
+      "layer_name": "model.5.conv",
+      "params_before": 147584,
+      "params_after": 137088,
+      "param_gain_pct": 7.1119,
+      "local_output_error": null,
+      "map50_single_layer": 0.9593011739857132,
+      "map50_drop": 0.0,
+      "compressibility_score": 7111900.0
+    },
+    {
+      "layer_name": "model.17.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.9590819881377776,
+      "map50_drop": 1e-05,
+      "compressibility_score": 724754.5455
+    },
+    {
+      "layer_name": "model.20.conv",
+      "params_before": 147584,
+      "params_after": 137088,
+      "param_gain_pct": 7.1119,
+      "local_output_error": null,
+      "map50_single_layer": 0.9590708127210515,
+      "map50_drop": 2.1e-05,
+      "compressibility_score": 323268.1818
+    },
+    {
+      "layer_name": "model.7.conv",
+      "params_before": 295168,
+      "params_after": 180480,
+      "param_gain_pct": 38.8552,
+      "local_output_error": null,
+      "map50_single_layer": 0.9586334198466345,
+      "map50_drop": 0.000458,
+      "compressibility_score": 84651.8519
+    },
+    {
+      "layer_name": "model.19.m.0.cv1.conv",
+      "params_before": 18464,
+      "params_after": 15840,
+      "param_gain_pct": 14.2114,
+      "local_output_error": null,
+      "map50_single_layer": 0.9588975288012239,
+      "map50_drop": 0.000194,
+      "compressibility_score": 72878.9744
+    },
+    {
+      "layer_name": "model.16.m.0.cv2.conv",
+      "params_before": 4640,
+      "params_after": 2848,
+      "param_gain_pct": 38.6207,
+      "local_output_error": null,
+      "map50_single_layer": 0.9585518925143148,
+      "map50_drop": 0.00054,
+      "compressibility_score": 71387.6155
+    },
+    {
+      "layer_name": "model.13.m.0.cv2.conv",
+      "params_before": 18496,
+      "params_after": 11328,
+      "param_gain_pct": 38.7543,
+      "local_output_error": null,
+      "map50_single_layer": 0.9584999576006173,
+      "map50_drop": 0.000592,
+      "compressibility_score": 65352.9511
+    },
+    {
+      "layer_name": "model.8.m.0.m.1.cv1.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.9588622941677486,
+      "map50_drop": 0.00023,
+      "compressibility_score": 34512.1212
+    },
+    {
+      "layer_name": "model.6.m.0.m.1.cv2.conv",
+      "params_before": 9248,
+      "params_after": 8352,
+      "param_gain_pct": 9.6886,
+      "local_output_error": null,
+      "map50_single_layer": 0.9586705891897072,
+      "map50_drop": 0.000421,
+      "compressibility_score": 22958.7678
+    },
+    {
+      "layer_name": "model.8.m.0.m.0.cv1.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.9587101904409411,
+      "map50_drop": 0.000382,
+      "compressibility_score": 20815.4047
+    },
+    {
+      "layer_name": "model.19.m.0.cv2.conv",
+      "params_before": 18496,
+      "params_after": 11328,
+      "param_gain_pct": 38.7543,
+      "local_output_error": null,
+      "map50_single_layer": 0.9566236425599399,
+      "map50_drop": 0.002468,
+      "compressibility_score": 15696.3548
+    },
+    {
+      "layer_name": "model.6.m.0.m.0.cv1.conv",
+      "params_before": 9248,
+      "params_after": 8352,
+      "param_gain_pct": 9.6886,
+      "local_output_error": null,
+      "map50_single_layer": 0.9583299165944397,
+      "map50_drop": 0.000762,
+      "compressibility_score": 12698.0341
+    },
+    {
+      "layer_name": "model.22.m.0.m.1.cv2.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.9584252751922187,
+      "map50_drop": 0.000667,
+      "compressibility_score": 11934.5808
+    },
+    {
+      "layer_name": "model.2.m.0.cv1.conv",
+      "params_before": 1160,
+      "params_after": 920,
+      "param_gain_pct": 20.6897,
+      "local_output_error": null,
+      "map50_single_layer": 0.9526283367504267,
+      "map50_drop": 0.006463,
+      "compressibility_score": 3200.758
+    },
+    {
+      "layer_name": "model.4.m.0.cv2.conv",
+      "params_before": 4640,
+      "params_after": 2848,
+      "param_gain_pct": 38.6207,
+      "local_output_error": null,
+      "map50_single_layer": 0.7452699050584856,
+      "map50_drop": 0.213822,
+      "compressibility_score": 180.62
+    },
+    {
+      "layer_name": "model.1.conv",
+      "params_before": 4640,
+      "params_after": 2848,
+      "param_gain_pct": 38.6207,
+      "local_output_error": null,
+      "map50_single_layer": 0.7046975669431107,
+      "map50_drop": 0.254394,
+      "compressibility_score": 151.8139
+    },
+    {
+      "layer_name": "model.2.m.0.cv2.conv",
+      "params_before": 1168,
+      "params_after": 720,
+      "param_gain_pct": 38.3562,
+      "local_output_error": null,
+      "map50_single_layer": 0.5915920907409531,
+      "map50_drop": 0.3675,
+      "compressibility_score": 104.3703
+    }
+  ],
+  "top_layers": [
+    "model.13.m.0.cv1.conv",
+    "model.4.m.0.cv1.conv",
+    "model.16.m.0.cv1.conv",
+    "model.6.m.0.m.0.cv2.conv",
+    "model.6.m.0.m.1.cv1.conv",
+    "model.3.conv",
+    "model.8.m.0.m.0.cv2.conv",
+    "model.8.m.0.m.1.cv2.conv",
+    "model.22.m.0.m.0.cv1.conv",
+    "model.22.m.0.m.0.cv2.conv"
+  ]
+}

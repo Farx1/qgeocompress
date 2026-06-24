@@ -17,7 +17,7 @@ from qgeocompress.compression.finetune import (
     load_baseline_map50,
     reload_is_unstable,
 )
-from qgeocompress.data.prepare_dota import get_data_yaml
+from qgeocompress.data.prepare_dota import get_data_yaml, resolve_data_yaml
 from qgeocompress.evaluation.system_metrics import benchmark_inference
 from qgeocompress.models.load_model import extract_detection_metrics, model_size_mb
 from qgeocompress.utils.config import load_model_config, make_run_id, project_root, save_json
@@ -48,18 +48,19 @@ def _has_structural_layers(model: YOLO) -> bool:
 def _evaluate_model(
     model: YOLO,
     weights_path: Path | None,
-    dataset: str,
+    dataset: str | None,
     imgsz: int,
     device: str,
     half: bool = False,
+    data_yaml: str | Path | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    data_yaml = get_data_yaml(dataset)
+    yaml_path = resolve_data_yaml(dataset=dataset, data_yaml=data_yaml)
     if _has_structural_layers(model):
         from qgeocompress.evaluation.obb_validate import validate_no_fuse
 
-        val_results = validate_no_fuse(model, data_yaml, imgsz=imgsz, device=device, half=half)
+        val_results = validate_no_fuse(model, yaml_path, imgsz=imgsz, device=device, half=half)
     else:
-        val_results = model.val(data=data_yaml, imgsz=imgsz, device=device, half=half, verbose=False)
+        val_results = model.val(data=yaml_path, imgsz=imgsz, device=device, half=half, verbose=False)
     det_metrics = extract_detection_metrics(val_results)
 
     bench_row: dict[str, Any] = {}
@@ -77,8 +78,14 @@ def _evaluate_model(
     return det_metrics, bench_row
 
 
-def _map50_only(model: YOLO, dataset: str, imgsz: int, device: str) -> float:
-    metrics, _ = _evaluate_model(model, None, dataset, imgsz, device)
+def _map50_only(
+    model: YOLO,
+    dataset: str | None,
+    imgsz: int,
+    device: str,
+    data_yaml: str | Path | None = None,
+) -> float:
+    metrics, _ = _evaluate_model(model, None, dataset, imgsz, device, data_yaml=data_yaml)
     return float(metrics.get("map50") or 0.0)
 
 
@@ -267,6 +274,16 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--weights", type=Path, required=True)
     parser.add_argument("--dataset", default="dota128")
+    parser.add_argument("--data-yaml", type=Path, default=None, help="Ultralytics data YAML (overrides --dataset)")
+    parser.add_argument("--eval-data-yaml", type=Path, default=None, help="YAML for final mAP eval (test split)")
+    parser.add_argument("--bn-data-yaml", type=Path, default=None, help="YAML for BN recalibration (train split)")
+    parser.add_argument(
+        "--sensitivity-file",
+        type=Path,
+        default=None,
+        help="JSON from structural-probe for sensitivity selection",
+    )
+    parser.add_argument("--run-label", default=None, help="Distinct suffix for outputs (e.g. holdout_top5_sens)")
     parser.add_argument("--model", default="yolo_obb_small")
     parser.add_argument("--output-dir", type=Path, default=Path("runs/compressed"))
     parser.add_argument("--sparsity", type=float, default=0.2)
@@ -279,9 +296,15 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--selection-strategy",
-        choices=["all", "sensitivity"],
+        choices=["all", "sensitivity", "pareto-gain"],
         default="all",
-        help="Layer selection for structural-low-rank (sensitivity requires probe JSON)",
+        help="Layer selection for structural-low-rank (sensitivity or pareto-gain require probe JSON)",
+    )
+    parser.add_argument(
+        "--max-map50-drop",
+        type=float,
+        default=0.03,
+        help="Max single-layer mAP drop for pareto-gain selection",
     )
     parser.add_argument(
         "--max-replaced-layers",
@@ -333,14 +356,15 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     if args.method == "structural-probe":
+        probe_yaml = resolve_data_yaml(dataset=args.dataset, data_yaml=args.data_yaml)
         logger.info(
-            "Structural probe r=%.3f on %s (this runs one val per candidate layer)",
+            "Structural probe r=%.3f on %s (one val per candidate layer)",
             args.rank_ratio,
-            args.dataset,
+            probe_yaml,
         )
 
         def _probe_eval(m: YOLO) -> float:
-            return _map50_only(m, args.dataset, args.imgsz, device)
+            return _map50_only(m, args.dataset, args.imgsz, device, data_yaml=probe_yaml)
 
         meta, _ = compress_model(
             args.weights,
@@ -349,18 +373,25 @@ def main(argv: list[str] | None = None) -> None:
             rank_ratio=args.rank_ratio,
             target_layers=args.target_layers,
             dataset=args.dataset,
+            data_yaml=str(probe_yaml),
             imgsz=args.imgsz,
             device=device,
             eval_map50_fn=_probe_eval,
             max_probe_layers=args.probe_max_layers,
+            run_label=args.run_label,
+            sensitivity_report_path=args.sensitivity_file,
         )
         summary = {
             "run_id": make_run_id("structural-probe", {
                 "rank_ratio": args.rank_ratio,
                 "dataset": args.dataset,
+                "data_yaml": str(probe_yaml),
+                "run_label": args.run_label,
                 "weights": str(args.weights),
             }),
             "dataset": args.dataset,
+            "data_yaml": str(probe_yaml),
+            "run_label": args.run_label,
             "compression": "structural-probe",
             "rank_ratio": args.rank_ratio,
             **meta,
@@ -376,6 +407,7 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     out_subdir = args.output_dir / args.method.replace("-", "_")
+    eval_yaml = args.eval_data_yaml or args.data_yaml
     meta, in_memory_model = compress_model(
         args.weights,
         args.method,
@@ -388,6 +420,11 @@ def main(argv: list[str] | None = None) -> None:
         max_replaced_layers=args.max_replaced_layers,
         bn_recalibration_batches=args.bn_recalibration_batches,
         dataset=args.dataset,
+        data_yaml=str(args.data_yaml) if args.data_yaml else None,
+        bn_data_yaml=str(args.bn_data_yaml) if args.bn_data_yaml else None,
+        sensitivity_file=str(args.sensitivity_file) if args.sensitivity_file else None,
+        run_label=args.run_label,
+        max_map50_drop=args.max_map50_drop,
         imgsz=args.imgsz,
         device=device,
     )
@@ -405,6 +442,7 @@ def main(argv: list[str] | None = None) -> None:
             args.dataset,
             args.imgsz,
             device,
+            data_yaml=eval_yaml,
         )
         model_size = round(model_size_mb(meta["output_weights"]), 2)
     elif status == "ok" and args.method == "fp16":
@@ -429,10 +467,17 @@ def main(argv: list[str] | None = None) -> None:
         "finetune_lr0": None,
         "selection_strategy": args.selection_strategy if args.method == "structural-low-rank" else None,
         "max_replaced_layers": args.max_replaced_layers,
+        "run_label": args.run_label,
+        "data_yaml": str(args.data_yaml) if args.data_yaml else None,
+        "eval_data_yaml": str(eval_yaml) if eval_yaml else None,
     }
     summary = {
         "run_id": make_run_id(args.method, run_config),
         "dataset": args.dataset,
+        "data_yaml": str(args.data_yaml) if args.data_yaml else None,
+        "eval_data_yaml": str(eval_yaml) if eval_yaml else None,
+        "bn_data_yaml": str(args.bn_data_yaml) if args.bn_data_yaml else None,
+        "run_label": args.run_label,
         "model": model_cfg.get("name", args.model),
         "compression": args.method,
         "rank_ratio": args.rank_ratio if args.method in ("low-rank", "structural-low-rank") else None,
