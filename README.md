@@ -256,6 +256,70 @@ Gate statuses: `deployable_compression_candidate` | `methodologically_valid` | `
 
 Hold-out report: [`results/reports/qgeocompress_phase3b_holdout.md`](results/reports/qgeocompress_phase3b_holdout.md)
 
+### 11. Valohai post-training DAG
+
+Production integration target: a **Valohai pipeline** with quality gates, not a standalone compression script.
+
+```text
+checkpoint → baseline-eval → structural-probe → compress-selective
+→ inference-compare → quality-gate → export / reject
+```
+
+Config: [`valohai.yaml`](valohai.yaml) — steps `qgc-*` in [`scripts/valohai/`](scripts/valohai/).
+
+```bash
+# Lint + ad-hoc pipeline (requires Valohai CLI + project linked)
+vh lint
+vh pipeline run qgc-post-training-compression --adhoc
+
+# Local step smoke test (writes to ./valohai_outputs/)
+export VALOHAI_OUTPUTS_DIR=./valohai_outputs
+BEST="runs/obb/runs/obb/runs/baseline_holdout/weights/best.pt"
+HOLDOUT=datasets/dota128_holdout
+
+python scripts/valohai/baseline_eval_step.py \
+  --model "$BEST" --test-yaml "$HOLDOUT/dota128_holdout_test.yaml"
+
+python scripts/valohai/structural_probe_step.py \
+  --model "$BEST" --select-yaml "$HOLDOUT/dota128_holdout_select.yaml"
+
+python scripts/valohai/compress_selective_step.py \
+  --model "$BEST" \
+  --sensitivity-json valohai_outputs/structural_layer_sensitivity.json \
+  --train-yaml "$HOLDOUT/dota128_holdout_train.yaml" \
+  --test-yaml "$HOLDOUT/dota128_holdout_test.yaml" \
+  --selection-strategy pareto-gain --max-replaced-layers 5
+
+python scripts/valohai/inference_compare_step.py \
+  --baseline-model "$BEST" \
+  --compressed-model valohai_outputs/compressed_model.pt \
+  --test-yaml "$HOLDOUT/dota128_holdout_test.yaml"
+
+python scripts/valohai/quality_gate_step.py \
+  --comparison-metrics valohai_outputs/comparison_metrics.json \
+  --compression-summary valohai_outputs/compression_summary.json \
+  --comparison-full valohai_outputs/comparison_full.json
+
+python scripts/valohai/export_if_accepted_step.py \
+  --quality-gate valohai_outputs/quality_gate.json \
+  --compressed-model valohai_outputs/compressed_model.pt \
+  --compression-summary valohai_outputs/compression_summary.json \
+  --final-report valohai_outputs/final_report.md
+```
+
+**Docker image** (production Valohai runs):
+
+```bash
+docker build -t qgeocompress:latest .
+# then set image: your-registry/qgeocompress:latest in valohai.yaml
+```
+
+Gate statuses (Valohai): `accepted_for_export` | `accepted_for_research` | `rejected`.
+
+Export step (`qgc-export-if-accepted`): registers `export_model.pt` only when `accepted_for_export`; ONNX attempted for standard checkpoints (skipped for structural `no-fuse` models).
+
+Outputs land in `/valohai/outputs/` (or `VALOHAI_OUTPUTS_DIR`). Each step prints JSON metrics to stdout for Valohai experiment tracking.
+
 ### 6. Calibrate and report
 
 ```bash

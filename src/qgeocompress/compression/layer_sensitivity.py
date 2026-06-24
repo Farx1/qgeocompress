@@ -148,6 +148,16 @@ def select_layers_by_sensitivity(
     return [r["layer_name"] for r in ranked[:max_layers]]
 
 
+def _param_gain_abs(row: dict[str, Any]) -> int:
+    if row.get("param_gain_abs") is not None:
+        return int(row["param_gain_abs"])
+    before = row.get("params_before")
+    after = row.get("params_after")
+    if before is not None and after is not None:
+        return int(before) - int(after)
+    return 0
+
+
 def select_layers_by_pareto_gain(
     probe_results: list[dict[str, Any]],
     max_layers: int,
@@ -160,7 +170,7 @@ def select_layers_by_pareto_gain(
     ]
     ranked = sorted(
         eligible,
-        key=lambda r: r.get("param_gain_abs") or 0,
+        key=_param_gain_abs,
         reverse=True,
     )
     return [r["layer_name"] for r in ranked[:max_layers]]

@@ -208,12 +208,10 @@ def compress_model(
             suffix = f"_{run_label}"
         elif max_replaced_layers:
             suffix = f"_top{max_replaced_layers}"
-        if selection_strategy == "pareto-gain":
-            suffix += "_pareto"
-        elif selection_strategy == "sensitivity":
-            suffix += "_sens"
-        elif selection_strategy == "sensitivity":
-            suffix = "_sens"
+            if selection_strategy == "pareto-gain":
+                suffix += "_pareto"
+            elif selection_strategy == "sensitivity":
+                suffix += "_sens"
         out_path = output_dir / f"structural_low_rank_r{rank_ratio:.3f}{suffix}.pt"
         model.save(str(out_path))
         meta.update({

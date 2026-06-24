@@ -1,0 +1,312 @@
+---
+
+# Q-GEOCompress post-training compression DAG (Valohai)
+# MVP image: python:3.11 + pip install -e .
+# Production: docker build -t qgeocompress:latest . then set image below.
+
+- step:
+    name: qgc-baseline-eval
+    image: python:3.11
+    command:
+      - bash -c
+      - |
+        set -e
+        pip install -q -e .
+        python scripts/valohai/baseline_eval_step.py \
+          --model {inputs.model} \
+          --test-yaml {inputs.test_yaml}
+    inputs:
+      - name: model
+        default: datum://
+      - name: test_yaml
+        default: datum://
+    outputs:
+      - name: baseline_metrics.json
+      - name: baseline_calibration.json
+      - name: baseline_predictions.json
+
+- step:
+    name: qgc-structural-probe
+    image: python:3.11
+    command:
+      - bash -c
+      - |
+        set -e
+        pip install -q -e .
+        python scripts/valohai/structural_probe_step.py \
+          --model {inputs.model} \
+          --select-yaml {inputs.select_yaml} \
+          --rank-ratio {parameters.rank_ratio} \
+          --target-layers {parameters.target_layers}
+    inputs:
+      - name: model
+        default: datum://
+      - name: select_yaml
+        default: datum://
+    parameters:
+      - name: rank_ratio
+        type: float
+        default: 0.84
+      - name: target_layers
+        type: string
+        default: backbone neck
+    outputs:
+      - name: structural_layer_sensitivity.json
+      - name: probe_summary.json
+
+- step:
+    name: qgc-compress-selective
+    image: python:3.11
+    command:
+      - bash -c
+      - |
+        set -e
+        pip install -q -e .
+        python scripts/valohai/compress_selective_step.py \
+          --model {inputs.model} \
+          --sensitivity-json {inputs.sensitivity_json} \
+          --train-yaml {inputs.train_yaml} \
+          --test-yaml {inputs.test_yaml} \
+          --rank-ratio {parameters.rank_ratio} \
+          --max-replaced-layers {parameters.max_replaced_layers} \
+          --selection-strategy {parameters.selection_strategy} \
+          --bn-recalibration-batches {parameters.bn_recalibration_batches}
+    inputs:
+      - name: model
+        default: datum://
+      - name: sensitivity_json
+        default: datum://
+      - name: train_yaml
+        default: datum://
+      - name: test_yaml
+        default: datum://
+    parameters:
+      - name: rank_ratio
+        type: float
+        default: 0.84
+      - name: max_replaced_layers
+        type: integer
+        default: 5
+      - name: selection_strategy
+        type: string
+        default: pareto-gain
+      - name: bn_recalibration_batches
+        type: integer
+        default: 20
+    outputs:
+      - name: compressed_model.pt
+      - name: compression_summary.json
+      - name: selected_layers.json
+
+- step:
+    name: qgc-inference-compare
+    image: python:3.11
+    command:
+      - bash -c
+      - |
+        set -e
+        pip install -q -e .
+        python scripts/valohai/inference_compare_step.py \
+          --baseline-model {inputs.baseline_model} \
+          --compressed-model {inputs.compressed_model} \
+          --test-yaml {inputs.test_yaml} \
+          --rank-ratio {parameters.rank_ratio} \
+          --batch-size {parameters.batch_size}
+    inputs:
+      - name: baseline_model
+        default: datum://
+      - name: compressed_model
+        default: datum://
+      - name: test_yaml
+        default: datum://
+    parameters:
+      - name: rank_ratio
+        type: float
+        default: 0.84
+      - name: batch_size
+        type: integer
+        default: 1
+    outputs:
+      - name: comparison_metrics.json
+      - name: comparison_full.json
+      - name: inference_latency.json
+      - name: calibration_comparison.json
+
+- step:
+    name: qgc-quality-gate
+    image: python:3.11
+    command:
+      - bash -c
+      - |
+        set -e
+        pip install -q -e .
+        python scripts/valohai/quality_gate_step.py \
+          --comparison-metrics {inputs.comparison_metrics} \
+          --compression-summary {inputs.compression_summary} \
+          --comparison-full {inputs.comparison_full} \
+          --max-map50-drop {parameters.max_map50_drop} \
+          --max-cer08-delta {parameters.max_cer08_delta} \
+          --min-param-reduction-pct {parameters.min_param_reduction_pct}
+    inputs:
+      - name: comparison_metrics
+        default: datum://
+      - name: compression_summary
+        default: datum://
+      - name: comparison_full
+        default: datum://
+        optional: true
+    parameters:
+      - name: max_map50_drop
+        type: float
+        default: 0.10
+      - name: max_cer08_delta
+        type: float
+        default: 0.02
+      - name: min_param_reduction_pct
+        type: float
+        default: 2.0
+    outputs:
+      - name: quality_gate.json
+      - name: final_report.md
+
+- step:
+    name: qgc-export-if-accepted
+    image: python:3.11
+    command:
+      - bash -c
+      - |
+        set -e
+        pip install -q -e .
+        python scripts/valohai/export_if_accepted_step.py \
+          --quality-gate {inputs.quality_gate} \
+          --compressed-model {inputs.compressed_model} \
+          --compression-summary {inputs.compression_summary} \
+          --final-report {inputs.final_report} \
+          {parameters.no_onnx_flag}
+    inputs:
+      - name: quality_gate
+        default: datum://
+      - name: compressed_model
+        default: datum://
+      - name: compression_summary
+        default: datum://
+      - name: final_report
+        default: datum://
+        optional: true
+    parameters:
+      - name: no_onnx_flag
+        type: string
+        default: ""
+    outputs:
+      - name: export_manifest.json
+      - name: research_manifest.json
+      - name: rejection_manifest.json
+      - name: export_model.pt
+      - name: export_model.onnx
+      - name: export_report.md
+
+- pipeline:
+    name: qgc-post-training-compression
+    parameters:
+      - name: rank_ratio
+        type: float
+        default: 0.84
+      - name: max_replaced_layers
+        type: integer
+        default: 5
+      - name: selection_strategy
+        type: string
+        default: pareto-gain
+      - name: bn_recalibration_batches
+        type: integer
+        default: 20
+      - name: batch_size
+        type: integer
+        default: 1
+      - name: max_map50_drop
+        type: float
+        default: 0.10
+      - name: max_cer08_delta
+        type: float
+        default: 0.02
+      - name: min_param_reduction_pct
+        type: float
+        default: 2.0
+      - name: target_layers
+        type: string
+        default: backbone neck
+    nodes:
+      - name: baseline-eval
+        type: execution
+        step: qgc-baseline-eval
+        parameters:
+          - name: test_yaml
+            default: datum://dota128_holdout_test.yaml
+
+      - name: structural-probe
+        type: execution
+        step: qgc-structural-probe
+        parameters:
+          - name: rank_ratio
+            default: $rank_ratio
+          - name: target_layers
+            default: $target_layers
+          - name: select_yaml
+            default: datum://dota128_holdout_select.yaml
+
+      - name: compress-selective
+        type: execution
+        step: qgc-compress-selective
+        parameters:
+          - name: rank_ratio
+            default: $rank_ratio
+          - name: max_replaced_layers
+            default: $max_replaced_layers
+          - name: selection_strategy
+            default: $selection_strategy
+          - name: bn_recalibration_batches
+            default: $bn_recalibration_batches
+          - name: train_yaml
+            default: datum://dota128_holdout_train.yaml
+          - name: test_yaml
+            default: datum://dota128_holdout_test.yaml
+
+      - name: inference-compare
+        type: execution
+        step: qgc-inference-compare
+        parameters:
+          - name: rank_ratio
+            default: $rank_ratio
+          - name: batch_size
+            default: $batch_size
+          - name: test_yaml
+            default: datum://dota128_holdout_test.yaml
+
+      - name: quality-gate
+        type: execution
+        step: qgc-quality-gate
+        parameters:
+          - name: max_map50_drop
+            default: $max_map50_drop
+          - name: max_cer08_delta
+            default: $max_cer08_delta
+          - name: min_param_reduction_pct
+            default: $min_param_reduction_pct
+
+      - name: export-if-accepted
+        type: execution
+        step: qgc-export-if-accepted
+
+    edges:
+      - [baseline-eval.input.model, structural-probe.input.model]
+      - [structural-probe.output.structural_layer_sensitivity.json, compress-selective.input.sensitivity_json]
+      - [structural-probe.input.model, compress-selective.input.model]
+      - [structural-probe.input.model, inference-compare.input.baseline_model]
+      - [compress-selective.output.compressed_model.pt, inference-compare.input.compressed_model]
+      - [inference-compare.output.comparison_metrics.json, quality-gate.input.comparison_metrics]
+      - [inference-compare.output.comparison_full.json, quality-gate.input.comparison_full]
+      - [compress-selective.output.compression_summary.json, quality-gate.input.compression_summary]
+      - [quality-gate.output.quality_gate.json, export-if-accepted.input.quality_gate]
+      - [quality-gate.output.final_report.md, export-if-accepted.input.final_report]
+      - [compress-selective.output.compressed_model.pt, export-if-accepted.input.compressed_model]
+      - [compress-selective.output.compression_summary.json, export-if-accepted.input.compression_summary]
