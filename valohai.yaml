@@ -183,7 +183,8 @@
           --compressed-model {inputs.compressed_model} \
           --compression-summary {inputs.compression_summary} \
           --final-report {inputs.final_report} \
-          {parameters.no_onnx_flag}
+          {parameters.no_onnx_flag} \
+          {parameters.no_torchscript_flag}
     inputs:
       - name: quality_gate
         default: datum://
@@ -198,12 +199,17 @@
       - name: no_onnx_flag
         type: string
         default: ""
+      - name: no_torchscript_flag
+        type: string
+        default: ""
     outputs:
       - name: export_manifest.json
       - name: research_manifest.json
       - name: rejection_manifest.json
       - name: export_model.pt
       - name: export_model.onnx
+      - name: export_model.torchscript
+      - name: export_model_collapsed.pt
       - name: export_report.md
 
 - pipeline:

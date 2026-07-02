@@ -19,13 +19,13 @@ A post-training optimization stack for **YOLO11n-OBB** on **DOTA** aerial detect
 | **Phase 2 (low-rank + calibration)** | Done | Rank frontier + GT-matched ECE/CER |
 | **Phase 3B (structural selective)** | Validated on hold-out | Pareto-gain ~5–6% params, mAP preserved |
 | **Valohai DAG** | MVP implemented | Not yet battle-tested on Valohai cloud |
-| **ONNX / TensorRT export** | Experimental | Structural models need `no-fuse`; export blocked |
+| **ONNX / TensorRT export** | Multi-format CLI | Baseline ONNX/TS; structural via collapsed fallback or `.pt` no-fuse |
 | **Full DOTA scale** | Not started | MVP runs on DOTA128 (128 images) |
 | **Production deployment** | Out of scope (for now) | Research → MLOps brick, not a shipped product |
 
 **Latest validated result (Phase 3B hold-out, test split):** pareto-gain top-5 → mAP50 **0.933**, CER@0.8 **0.005**, **−5.63%** params vs baseline. Naive full structural replacement still **rejected** (mAP50 ≈ 0.27).
 
-Reports: [`results/reports/qgeocompress_phase3b_holdout.md`](results/reports/qgeocompress_phase3b_holdout.md) · [`results/reports/qgeocompress_phase3b_summary.md`](results/reports/qgeocompress_phase3b_summary.md) · [`results/reports/qgeocompress_phase3c_comparison.md`](results/reports/qgeocompress_phase3c_comparison.md) · Plan: [`docs/PHASE3_PLAN.md`](docs/PHASE3_PLAN.md) · GPU: [`docs/GPU_RUNBOOK.md`](docs/GPU_RUNBOOK.md)
+Reports: [`results/reports/qgeocompress_phase3b_holdout.md`](results/reports/qgeocompress_phase3b_holdout.md) · [`results/reports/qgeocompress_phase3b_summary.md`](results/reports/qgeocompress_phase3b_summary.md) · [`results/reports/qgeocompress_phase3c_comparison.md`](results/reports/qgeocompress_phase3c_comparison.md) · Plan: [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) · Phase 3: [`docs/PHASE3_PLAN.md`](docs/PHASE3_PLAN.md) · GPU: [`docs/GPU_RUNBOOK.md`](docs/GPU_RUNBOOK.md)
 
 ---
 
@@ -61,8 +61,8 @@ Phase 3A  Full structural low-rank replace            [failed — mAP collapse]
 Phase 3B  Selective structural + sensitivity probe    [done — in-sample]
 Phase 3B' Hold-out validation (80/24/24)               [done]
 Phase 3B'' Pareto-gain layer selection                 [done — deployable gate on hold-out]
-Phase 4   Valohai DAG + export path                     [in progress — MVP coded]
-Phase 5   Scale (full DOTA), latency proof, ONNX/TRT    [planned]
+Phase 4   Valohai DAG + export path                     [done — MVP + multi-format]
+Phase 5   Scale (full DOTA), latency proof, TensorRT    [planned — user GPU]
 ```
 
 ---
@@ -76,7 +76,7 @@ Phase 5   Scale (full DOTA), latency proof, ONNX/TRT    [planned]
 | **Data** | DOTA128 (MVP, bundled in repo), DOTA / xView (extensions) |
 | **Metrics** | GT-matched calibration, ECE, CER@0.8, selective prediction |
 | **MLOps** | Valohai (`valohai.yaml`), Docker |
-| **Quality** | pytest (95 tests), ruff |
+| **Quality** | pytest (~105 tests), ruff |
 
 ---
 
@@ -93,14 +93,14 @@ Phase 5   Scale (full DOTA), latency proof, ONNX/TRT    [planned]
 - **Valohai DAG** — six steps in `valohai.yaml` + wrappers in `scripts/valohai/`
 - **System benchmarks** — latency, throughput, VRAM, model size (structural via no-fuse `predict`)
 - **Phase 3C report** — `scripts/make_phase3c_report.py` joins calibration + compression + gate JSONs
-- **Export tooling** — `scripts/export_model.py` (ONNX for baseline, `.pt` copy for structural)
+- **Export tooling** — `scripts/export_model.py` (`--format onnx|torchscript|pt|all`, collapsed structural fallback, JSON manifest)
 - **Local E2E pipeline** — `scripts/run_holdout_pipeline.sh` (`--skip-train`, `--skip-probe`, `--gpu`, `--dry-run`)
 - **CI** — GitHub Actions `pytest -q` on Python 3.11
 
 ### Experimental / incomplete
 
-- **Structural inference** — requires `no-fuse` path (`obb_validate.py`, `system_metrics.py`)
-- **ONNX export** — skipped for `StructuralLowRankConv2d` checkpoints
+- **Structural inference** — requires `no-fuse` path (`obb_validate.py`, `system_metrics.py`); use collapsed export for ONNX/TorchScript
+- **TensorRT** — `export_tensorrt.py` stub; requires NVIDIA GPU + `tensorrt` extra (not run in CI)
 - **Activation-aware probe** — `local_output_error` often `null` (hooks not wired)
 - **Valohai cloud runs** — config present; end-to-end cloud execution not documented here
 - **GPU latency gains** — param reduction proven; significant speedup not yet demonstrated
@@ -349,8 +349,14 @@ chmod +x scripts/run_holdout_pipeline.sh
 ### 11. Export accepted model
 
 ```bash
-python scripts/export_model.py --weights "$COMPRESSED" --output-dir runs/export/candidate
+python scripts/export_model.py \
+  --weights "$COMPRESSED" \
+  --format all \
+  --device cpu \
+  --output-dir runs/export/candidate
 ```
+
+Produces `export_manifest.json` with per-format status. Structural checkpoints: `.pt` (no-fuse) + optional `export_model_collapsed.pt` for Ultralytics-compatible ONNX/TorchScript attempts. See [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) export matrix.
 
 ### 8. Valohai post-training DAG (WIP)
 
@@ -395,7 +401,7 @@ Pipeline: `qgc-baseline-eval` → `qgc-structural-probe` → `qgc-compress-selec
 
 - **Small dataset** — DOTA128 (128 images); hold-out test = 24 images only.
 - **In-sample Phase 2** — early results used `train == val`; hold-out protocol fixes this for Phase 3B+.
-- **Structural serving** — no production ONNX/TensorRT path yet.
+- **Structural serving** — direct ONNX/TorchScript blocked; use collapsed fallback or no-fuse `.pt` (see export matrix in `docs/PROJECT_PLAN.md`)
 - **Probe signal** — `local_output_error` not fully implemented; selection relies mainly on single-layer mAP drop.
 - **Ultralytics paths** — nested `runs/obb/runs/obb/runs/...` from default project settings.
 - **No CI/CD** — GitHub Actions runs `pytest` on push/PR (no GPU)
@@ -404,11 +410,13 @@ Pipeline: `qgc-baseline-eval` → `qgc-structural-probe` → `qgc-compress-selec
 
 ## Roadmap (what comes next)
 
-1. **GPU tonight** — pareto BN=20, latency CUDA, full E2E (`docs/GPU_RUNBOOK.md`)
+See [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) for the full end-to-end plan. Remaining future work:
+
+1. **GPU tonight** — pareto BN=20, latency CUDA (`docs/GPU_RUNBOOK.md`)
 2. **Valohai cloud** — first end-to-end pipeline run with custom Docker image
 3. **Latency proof** — GPU benchmark on pareto-gain candidates vs baseline
-4. **Export path** — collapsed structural fallback or documented no-fuse TorchScript
-5. **Scale** — full DOTA or larger hold-out for publication-grade numbers
+4. **Scale** — full DOTA or larger hold-out for publication-grade numbers
+5. **TensorRT** — engine build on GPU host with `tensorrt` extra
 6. **Parallel candidates** — Valohai branch top-3 / top-5 / top-8 → select-best
 
 Contributions and feedback welcome while the project is active.
