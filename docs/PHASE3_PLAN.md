@@ -90,18 +90,34 @@ python scripts/compress_model.py \
 
 ### Phase 3C — Comparison matrix + calibration
 
-Run and tabulate selective models vs baseline / SVD in-place:
+Generate the unified hold-out comparison from existing JSON summaries:
 
-| Model | mAP50 | params | CER@0.8 | status |
-|-------|-------|--------|---------|--------|
-| baseline | 0.954 | 2.66M | 0.022 | safe |
-| SVD in-place r=0.84 | 0.841 | ~same | 0.026 | viable |
-| structural full r=0.84 | 0.058 | -7.3% | broken | broken |
-| structural selective top-5 | ? | ? | ? | ? |
+```bash
+python scripts/make_phase3c_report.py
+```
+
+Outputs: `results/reports/qgeocompress_phase3c_comparison.md`, `results/summaries/phase3c_comparison_table.csv`
+
+| Model | mAP50 | params Δ | CER@0.8 | ECE | Gate |
+|-------|-------|----------|---------|-----|------|
+| baseline (hold-out test) | 0.929 | 0% | 0.004 | 0.041 | reference |
+| structural top-5 pareto-gain | 0.933 | −5.63% | 0.005 | 0.042 | deployable_compression_candidate |
+| structural top-5 sensitivity | 0.879 | −0.21% | 0.005 | 0.041 | methodologically_valid |
+| structural full r=0.84 | 0.266 | −7.34% | pending cal | — | rejected |
+| SVD in-place r=0.84 (hold-out) | pending | — | — | — | pending |
+| structural top-5 pareto BN=20 | pending | — | — | — | pending (GPU) |
+
+Full E2E pipeline (local):
+
+```bash
+./scripts/run_holdout_pipeline.sh --skip-train --skip-probe
+```
+
+GPU re-runs (BN=20, latency): see [`docs/GPU_RUNBOOK.md`](GPU_RUNBOOK.md).
 
 ```bash
 python scripts/evaluate_calibration.py --weights ... --compression structural-low-rank --rank-ratio 0.84
-python scripts/make_calibration_report.py
+python scripts/make_phase3c_report.py
 ```
 
 ### Phase 3D — Hardening (later)
@@ -156,5 +172,6 @@ docs/PHASE3_PLAN.md                               # this file
 - [x] Phase 3 plan documented
 - [x] Phase 3A implementation (`structural_low_rank.py`, CLI, tests)
 - [ ] Phase 3A eval r=0.84 on DOTA128
-- [ ] Phase 3B comparison vs SVD in-place
-- [ ] Phase 3B calibration sweep
+- [x] Phase 3B hold-out validation (pareto-gain deployable)
+- [x] Phase 3C comparison report (`make_phase3c_report.py`)
+- [ ] Phase 3C GPU re-run (BN=20, latency proof)

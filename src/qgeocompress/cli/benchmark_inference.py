@@ -14,6 +14,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Benchmark inference latency and VRAM")
     parser.add_argument("--weights", type=Path, required=True)
     parser.add_argument("--dataset", default="dota128")
+    parser.add_argument("--data-yaml", type=Path, default=None, help="Ultralytics data YAML (overrides --dataset)")
     parser.add_argument("--batch-size", type=int, nargs="+", default=[1, 4, 8])
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--device", default=None)
@@ -25,6 +26,7 @@ def main(argv: list[str] | None = None) -> None:
     results = benchmark_inference(
         args.weights,
         dataset=args.dataset,
+        data_yaml=args.data_yaml,
         batch_sizes=args.batch_size,
         imgsz=args.imgsz,
         device=device,

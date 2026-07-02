@@ -2,7 +2,8 @@
 
 # Q-GEOCompress post-training compression DAG (Valohai)
 # MVP image: python:3.11 + pip install -e .
-# Production: docker build -t qgeocompress:latest . then set image below.
+# Production: docker build -t qgeocompress:latest .
+#   then set image: your-registry/qgeocompress:latest on each step below.
 
 - step:
     name: qgc-baseline-eval
