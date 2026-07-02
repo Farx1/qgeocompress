@@ -181,9 +181,16 @@ def select_layers(
     max_layers: int,
     strategy: str = "sensitivity",
     max_map50_drop: float = 0.03,
+    quantum_backend: str = "auto",
 ) -> list[str]:
     if strategy == "pareto-gain":
         return select_layers_by_pareto_gain(probe_results, max_layers, max_map50_drop=max_map50_drop)
+    if strategy == "quantum-qaoa":
+        from qgeocompress.quantum import select_layers_by_qaoa
+
+        return select_layers_by_qaoa(
+            probe_results, max_layers, backend=quantum_backend
+        )
     return select_layers_by_sensitivity(probe_results, max_layers)
 
 

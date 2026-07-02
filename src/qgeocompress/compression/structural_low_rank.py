@@ -125,6 +125,7 @@ def apply_structural_low_rank(
     selection_strategy: str = "all",
     sensitivity_report: dict[str, Any] | None = None,
     max_map50_drop: float = 0.03,
+    quantum_backend: str = "auto",
 ) -> tuple[YOLO, dict[str, Any]]:
     """Replace selected Conv2d layers with structural low-rank blocks."""
     pytorch_model = copy.deepcopy(model.model)
@@ -142,7 +143,7 @@ def apply_structural_low_rank(
 
     if selected_layer_names is not None:
         replace_names = [n for n in selected_layer_names if n in candidates]
-    elif selection_strategy in ("sensitivity", "pareto-gain") and sensitivity_report:
+    elif selection_strategy in ("sensitivity", "pareto-gain", "quantum-qaoa") and sensitivity_report:
         from qgeocompress.compression.layer_sensitivity import select_layers
 
         limit = max_replaced_layers or len(candidates)
@@ -151,6 +152,7 @@ def apply_structural_low_rank(
             limit,
             strategy=selection_strategy,
             max_map50_drop=max_map50_drop,
+            quantum_backend=quantum_backend,
         )
         replace_names = [n for n in replace_names if n in candidates]
     elif max_replaced_layers is not None:
@@ -193,6 +195,7 @@ def apply_structural_low_rank(
         "target_scope": target_scope,
         "target_layers": layers or ["backbone", "neck"],
         "selection_strategy": selection_strategy,
+        "quantum_backend": quantum_backend if selection_strategy == "quantum-qaoa" else None,
         "max_map50_drop": max_map50_drop if selection_strategy == "pareto-gain" else None,
         "max_replaced_layers": max_replaced_layers,
         "selected_layer_names": layer_names,

@@ -72,14 +72,36 @@ Build a **reliability-preserving, quantum-inspired compression stack** for geosp
 - `docs/PHASE3_PLAN.md`
 - `docs/GPU_RUNBOOK.md`
 
-### Phase 4 — Valohai cloud + scale (future)
+### Phase Q — Quantum layer selection (done)
 
-| Step | Description | Status |
+Reframe the "which layers to compress" decision as a **QUBO** and solve it with
+**QAOA** on a CPU state-vector simulator (PennyLane). This turns the previously
+vague "quantum-inspired" branding into a **concrete quantum algorithm** wired
+into the compression pipeline, with a classical exact solver as ground truth.
+
+| Item | Deliverable | Status |
 | ---- | ----------- | ------ |
-| 4.1 | First cloud DAG run with custom Docker image | Planned |
-| 4.2 | Parallel candidate branches (top-3/5/8) → select-best | Planned |
-| 4.3 | Full DOTA or larger hold-out | Planned |
-| 4.4 | GPU latency proof vs baseline | User-local (see GPU runbook) |
+| QUBO encoding | `quantum/qubo.py` (gain vs drop vs cardinality) | Done |
+| QAOA solver | `quantum/qaoa_selection.py` + classical fallback | Done |
+| CLI strategy | `--selection-strategy quantum-qaoa --quantum-backend {auto,qaoa,classical}` | Done |
+| Tests | `tests/test_quantum_selection.py` (11 tests) | Done |
+| Docs | `docs/QUANTUM.md` | Done |
+
+**Result on hold-out probe (8 layers, k=5):** QAOA reached ≈97% of the classical
+optimum energy. No quantum *advantage* claimed at this scale — the value is a
+clean, hardware-portable (D-Wave/annealer-ready) encoding. See `docs/QUANTUM.md`.
+
+### Phase 4 — Cloud, scale, and quantum extensions (future, non-GPU + GPU)
+
+| Step | Description | Status | Needs GPU |
+| ---- | ----------- | ------ | --------- |
+| 4.1 | First Valohai cloud DAG run with custom Docker image | Planned | No |
+| 4.2 | Parallel candidate branches (top-3/5/8) → select-best | Planned | No |
+| 4.3 | Quantum annealing backend (D-Wave / Ocean SDK) for the same QUBO | Planned | No |
+| 4.4 | Warm-start QAOA from greedy/pareto seed | Planned | No |
+| 4.5 | Tensor-Train / MPS weight factorization (quantum-inspired method #2) | Planned | No |
+| 4.6 | Full DOTA or larger hold-out | Planned | Yes |
+| 4.7 | GPU latency proof vs baseline | User-local (GPU runbook) | Yes |
 
 ---
 
@@ -165,18 +187,26 @@ vh pipeline run qgc-post-training-compression --adhoc
 - [x] Valohai DAG MVP (6 steps)
 - [x] Multi-format export CLI + manifest
 - [x] Collapsed structural fallback for ONNX/TorchScript attempts
-- [x] CI green (`pytest -q`)
+- [x] Quantum layer selection (QAOA) + classical reference (`docs/QUANTUM.md`)
+- [x] CI green (`pytest -q`, ~116 tests)
 - [x] `docs/PROJECT_PLAN.md` (this file)
 - [x] README + PHASE3_PLAN updated
 
 ### Future work (not blocking complete)
 
-- [ ] GPU BN=20 + latency proof (user-local)
+**Non-GPU (next):**
+
+- [ ] Quantum annealing backend (D-Wave / Ocean) for the selection QUBO
+- [ ] Warm-start QAOA from greedy/pareto seed; hard-constraint (slack) QUBO
+- [ ] Tensor-Train / MPS weight factorization (quantum-inspired method #2)
 - [ ] Valohai cloud end-to-end run
+- [ ] Activation-aware probe (`local_output_error`)
+
+**GPU (user-local):**
+
+- [ ] GPU BN=20 + latency proof (see `docs/GPU_RUNBOOK.md`)
 - [ ] Full DOTA scale
 - [ ] TensorRT engine build on GPU host
-- [ ] Custom fine-tune loop for structural gap closure
-- [ ] Activation-aware probe (`local_output_error`)
 
 ---
 
@@ -186,6 +216,9 @@ vh pipeline run qgc-post-training-compression --adhoc
 src/qgeocompress/
   compression/structural_low_rank.py   # StructuralLowRankConv2d
   compression/structural_collapse.py   # Collapse for export compat
+  compression/layer_sensitivity.py     # Probe + select_layers dispatch
+  quantum/qubo.py                      # QUBO encoding of layer selection
+  quantum/qaoa_selection.py            # QAOA solver + classical fallback
   models/export_core.py                # Multi-format orchestration
   cli/export_model.py                  # Export CLI
   valohai/export.py                    # Gate-gated export step
@@ -193,6 +226,7 @@ src/qgeocompress/
 scripts/export_model.py                # Entry point
 scripts/run_holdout_pipeline.sh        # Local E2E
 docs/PROJECT_PLAN.md                   # This file
+docs/QUANTUM.md                        # QUBO/QAOA formulation
 docs/PHASE3_PLAN.md                    # Phase 3 detail
 docs/GPU_RUNBOOK.md                    # GPU experiments
 ```
