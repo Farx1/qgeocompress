@@ -55,3 +55,9 @@ valohai_outputs_smoke/
 .coverage
 htmlcov/
 .pytest_cache/
+
+# GitNexus / agent tooling (local only, not published)
+.claude/
+AGENTS.md
+CLAUDE.md
+.gitnexus/
