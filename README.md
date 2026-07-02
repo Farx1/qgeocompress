@@ -1,5 +1,7 @@
 # Q-GEOCompress
 
+[![CI](https://github.com/Farx1/qgeocompress/actions/workflows/ci.yml/badge.svg)](https://github.com/Farx1/qgeocompress/actions/workflows/ci.yml)
+
 > **Work in progress** an active research & engineering project.  
 > Not production-ready. APIs, results, and the Valohai DAG may change between commits.
 
@@ -13,7 +15,7 @@ A post-training optimization stack for **YOLO11n-OBB** on **DOTA** aerial detect
 
 | Area | Status | Notes |
 | ---- | ------ | ----- |
-| **Core library** | Stable enough to run | ~95 pytest tests; fresh clone verified |
+| **Core library** | Stable enough to run | ~98 pytest tests; CI on push/PR |
 | **Phase 2 (low-rank + calibration)** | Done | Rank frontier + GT-matched ECE/CER |
 | **Phase 3B (structural selective)** | Validated on hold-out | Pareto-gain ~5–6% params, mAP preserved |
 | **Valohai DAG** | MVP implemented | Not yet battle-tested on Valohai cloud |
@@ -23,7 +25,7 @@ A post-training optimization stack for **YOLO11n-OBB** on **DOTA** aerial detect
 
 **Latest validated result (Phase 3B hold-out, test split):** pareto-gain top-5 → mAP50 **0.933**, CER@0.8 **0.005**, **−5.63%** params vs baseline. Naive full structural replacement still **rejected** (mAP50 ≈ 0.27).
 
-Reports: [`results/reports/qgeocompress_phase3b_holdout.md`](results/reports/qgeocompress_phase3b_holdout.md) · [`results/reports/qgeocompress_phase3b_summary.md`](results/reports/qgeocompress_phase3b_summary.md) · Plan: [`docs/PHASE3_PLAN.md`](docs/PHASE3_PLAN.md)
+Reports: [`results/reports/qgeocompress_phase3b_holdout.md`](results/reports/qgeocompress_phase3b_holdout.md) · [`results/reports/qgeocompress_phase3b_summary.md`](results/reports/qgeocompress_phase3b_summary.md) · [`results/reports/qgeocompress_phase3c_comparison.md`](results/reports/qgeocompress_phase3c_comparison.md) · Plan: [`docs/PHASE3_PLAN.md`](docs/PHASE3_PLAN.md) · GPU: [`docs/GPU_RUNBOOK.md`](docs/GPU_RUNBOOK.md)
 
 ---
 
@@ -89,11 +91,15 @@ Phase 5   Scale (full DOTA), latency proof, ONNX/TRT    [planned]
 - **Hold-out protocol** — `scripts/create_dota128_holdout.py` → 80 train / 24 select / 24 test
 - **Reliability gate** — `scripts/check_reliability_gate.py` accept / research-only / reject
 - **Valohai DAG** — six steps in `valohai.yaml` + wrappers in `scripts/valohai/`
-- **System benchmarks** — latency, throughput, VRAM, model size (standard checkpoints only)
+- **System benchmarks** — latency, throughput, VRAM, model size (structural via no-fuse `predict`)
+- **Phase 3C report** — `scripts/make_phase3c_report.py` joins calibration + compression + gate JSONs
+- **Export tooling** — `scripts/export_model.py` (ONNX for baseline, `.pt` copy for structural)
+- **Local E2E pipeline** — `scripts/run_holdout_pipeline.sh` (`--skip-train`, `--skip-probe`, `--gpu`, `--dry-run`)
+- **CI** — GitHub Actions `pytest -q` on Python 3.11
 
 ### Experimental / incomplete
 
-- **Structural inference** — requires `no-fuse` validation path (`obb_validate.py`)
+- **Structural inference** — requires `no-fuse` path (`obb_validate.py`, `system_metrics.py`)
 - **ONNX export** — skipped for `StructuralLowRankConv2d` checkpoints
 - **Activation-aware probe** — `local_output_error` often `null` (hooks not wired)
 - **Valohai cloud runs** — config present; end-to-end cloud execution not documented here
@@ -322,6 +328,30 @@ python scripts/check_reliability_gate.py \
 
 > Results on 24 test images are **directional**, not publication-grade. Treat as proof-of-method, not final performance claims.
 
+### 9. Phase 3C comparison report
+
+Aggregate hold-out calibration, compression, and gate JSONs:
+
+```bash
+python scripts/make_phase3c_report.py
+```
+
+Outputs: `results/reports/qgeocompress_phase3c_comparison.md`, `results/summaries/phase3c_comparison_table.csv`
+
+### 10. One-command hold-out pipeline
+
+```bash
+chmod +x scripts/run_holdout_pipeline.sh
+./scripts/run_holdout_pipeline.sh --skip-train --skip-probe   # reuse existing artifacts
+./scripts/run_holdout_pipeline.sh --gpu                       # full GPU run (see GPU_RUNBOOK)
+```
+
+### 11. Export accepted model
+
+```bash
+python scripts/export_model.py --weights "$COMPRESSED" --output-dir runs/export/candidate
+```
+
 ### 8. Valohai post-training DAG (WIP)
 
 Target: orchestrated MLOps pipeline with versioned artifacts.
@@ -368,13 +398,13 @@ Pipeline: `qgc-baseline-eval` → `qgc-structural-probe` → `qgc-compress-selec
 - **Structural serving** — no production ONNX/TensorRT path yet.
 - **Probe signal** — `local_output_error` not fully implemented; selection relies mainly on single-layer mAP drop.
 - **Ultralytics paths** — nested `runs/obb/runs/obb/runs/...` from default project settings.
-- **No CI/CD** — tests run locally; GitHub Actions not configured.
+- **No CI/CD** — GitHub Actions runs `pytest` on push/PR (no GPU)
 
 ---
 
 ## Roadmap (what comes next)
 
-1. **Push + CI** — GitHub Actions: `pytest` on every PR
+1. **GPU tonight** — pareto BN=20, latency CUDA, full E2E (`docs/GPU_RUNBOOK.md`)
 2. **Valohai cloud** — first end-to-end pipeline run with custom Docker image
 3. **Latency proof** — GPU benchmark on pareto-gain candidates vs baseline
 4. **Export path** — collapsed structural fallback or documented no-fuse TorchScript

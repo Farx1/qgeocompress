@@ -31,6 +31,8 @@ results/summaries/*
 !results/summaries/structural_layer_sensitivity_holdout*
 !results/summaries/reliability_gate*
 !results/summaries/structural-low-rank_*.json
+!results/summaries/phase3c_comparison_table.csv
+!results/summaries/phase3c_report.json
 results/reports/*
 !results/reports/.gitkeep
 !results/reports/qgeocompress_phase3*.md

@@ -11,12 +11,27 @@ from ultralytics import YOLO
 from ultralytics.data.utils import check_det_dataset
 
 from qgeocompress.data.prepare_dota import get_data_yaml
+from qgeocompress.evaluation.gt_matching import list_val_images
+from qgeocompress.evaluation.obb_validate import predict_no_fuse
 from qgeocompress.models.load_model import model_size_mb
 
 
-def _sample_images(dataset: str, max_images: int = 32) -> list[str]:
-    data_yaml = get_data_yaml(dataset)
-    info = check_det_dataset(data_yaml)
+def _has_structural_layers(model: YOLO) -> bool:
+    from qgeocompress.compression.structural_low_rank import StructuralLowRankConv2d
+
+    return any(isinstance(m, StructuralLowRankConv2d) for m in model.model.modules())
+
+
+def _sample_images(
+    dataset: str,
+    max_images: int = 32,
+    data_yaml: str | Path | None = None,
+) -> list[str]:
+    if data_yaml is not None:
+        return [str(p) for _, p in list_val_images(dataset=dataset, data_yaml=data_yaml)[:max_images]]
+
+    yaml_path = get_data_yaml(dataset)
+    info = check_det_dataset(yaml_path)
     val = info.get("val") or info.get("train")
     if not val:
         return []
@@ -38,13 +53,23 @@ def benchmark_inference(
     device: str | None = None,
     warmup: int = 5,
     repeats: int = 20,
+    data_yaml: str | Path | None = None,
 ) -> list[dict[str, Any]]:
     """Benchmark latency, throughput, and VRAM for multiple batch sizes."""
     batch_sizes = batch_sizes or [1, 4, 8]
-    model = YOLO(str(weights))
-    images = _sample_images(dataset, max_images=max(64, max(batch_sizes) * repeats))
+    model = YOLO(str(weights), task="obb")
+    structural = _has_structural_layers(model)
+    max_needed = max(64, max(batch_sizes) * repeats)
+    images = _sample_images(dataset, max_images=max_needed, data_yaml=data_yaml)
     if not images:
         raise RuntimeError(f"No validation images found for dataset '{dataset}'")
+
+    def _predict(batch: list[str]) -> None:
+        kwargs: dict[str, Any] = {"imgsz": imgsz, "device": device, "verbose": False}
+        if structural:
+            predict_no_fuse(model, batch, **kwargs)
+        else:
+            model.predict(batch, **kwargs)
 
     results: list[dict[str, Any]] = []
     for bs in batch_sizes:
@@ -56,7 +81,7 @@ def benchmark_inference(
             if len(batch) < bs:
                 batch = (batch * ((bs // len(batch)) + 1))[:bs]
             start = time.perf_counter()
-            model.predict(batch, imgsz=imgsz, device=device, verbose=False)
+            _predict(batch)
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
             elapsed_ms = (time.perf_counter() - start) * 1000
@@ -77,5 +102,6 @@ def benchmark_inference(
             "vram_mb_max": round(vram_mb, 1),
             "model_size_mb": round(model_size_mb(weights), 2),
             "device": device or ("cuda" if torch.cuda.is_available() else "cpu"),
+            "structural_no_fuse": structural,
         })
     return results

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -65,15 +66,22 @@ def _evaluate_model(
 
     bench_row: dict[str, Any] = {}
     if weights_path is not None and weights_path.exists():
-        if _has_structural_layers(model):
+        try:
+            bench = benchmark_inference(
+                weights_path,
+                dataset=dataset or "dota128",
+                data_yaml=yaml_path,
+                batch_sizes=[1],
+                imgsz=imgsz,
+                device=device,
+            )
+            bench_row = bench[0] if bench else {}
+        except Exception as exc:
             bench_row = {
                 "latency_ms_mean": None,
                 "throughput_img_s": None,
-                "benchmark_skipped": "structural_checkpoint_reload_incompatible_with_fuse",
+                "benchmark_skipped": str(exc),
             }
-        else:
-            bench = benchmark_inference(weights_path, dataset=dataset, batch_sizes=[1], imgsz=imgsz, device=device)
-            bench_row = bench[0] if bench else {}
 
     return det_metrics, bench_row
 
@@ -315,8 +323,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--bn-recalibration-batches",
         type=int,
-        default=0,
-        help="Forward batches for BN recalibration after structural replacement",
+        default=None,
+        help="Forward batches for BN recalibration after structural replacement (default: 20 for structural-low-rank, 0 otherwise)",
     )
     parser.add_argument(
         "--probe-max-layers",
@@ -329,6 +337,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default=None)
     args = parser.parse_args(argv)
+
+    if args.bn_recalibration_batches is None:
+        args.bn_recalibration_batches = 20 if args.method == "structural-low-rank" else 0
 
     logger = setup_logging()
     device = resolve_device(args.device)
