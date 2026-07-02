@@ -160,10 +160,11 @@ def compress_model(
         max_replaced_layers = kwargs.get("max_replaced_layers")
         sensitivity_report = kwargs.get("sensitivity_report")
         max_map50_drop = float(kwargs.get("max_map50_drop", 0.03))
+        quantum_backend = kwargs.get("quantum_backend", "auto")
         sensitivity_file = kwargs.get("sensitivity_file")
         if sensitivity_report is None and sensitivity_file:
             sensitivity_report = load_sensitivity_report(Path(sensitivity_file))
-        elif sensitivity_report is None and selection_strategy == "sensitivity":
+        elif sensitivity_report is None and selection_strategy in ("sensitivity", "quantum-qaoa"):
             try:
                 sensitivity_report = load_sensitivity_report()
             except FileNotFoundError:
@@ -178,6 +179,7 @@ def compress_model(
             selection_strategy=selection_strategy,
             sensitivity_report=sensitivity_report,
             max_map50_drop=max_map50_drop,
+            quantum_backend=quantum_backend,
         )
         meta.update(meta_slr)
 
@@ -212,6 +214,8 @@ def compress_model(
                 suffix += "_pareto"
             elif selection_strategy == "sensitivity":
                 suffix += "_sens"
+            elif selection_strategy == "quantum-qaoa":
+                suffix += "_qaoa"
         out_path = output_dir / f"structural_low_rank_r{rank_ratio:.3f}{suffix}.pt"
         model.save(str(out_path))
         meta.update({

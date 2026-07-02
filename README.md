@@ -5,9 +5,14 @@
 > **Work in progress** an active research & engineering project.  
 > Not production-ready. APIs, results, and the Valohai DAG may change between commits.
 
-Reliability-preserving, quantum-inspired compression for deployable geospatial AI — reduce inference cost (latency, VRAM, model size) without breaking detection performance or operational trust.
+Reliability-preserving compression for deployable geospatial AI — reduce inference cost (latency, VRAM, model size) without breaking detection performance or operational trust.
 
 A post-training optimization stack for **YOLO11n-OBB** on **DOTA** aerial detection: compress checkpoints under **quality gates** (mAP, ECE, CER@0.8), not blind size reduction.
+
+**Two distinct techniques, named honestly:**
+
+- **Quantum** — the *which-layers-to-compress* decision is encoded as a **QUBO** and solved with **QAOA** (a real variational quantum algorithm) on a CPU state-vector simulator. See [`docs/QUANTUM.md`](docs/QUANTUM.md).
+- **Quantum-inspired** — the *how-to-compress* step uses **SVD / structural low-rank factorization**, classical linear algebra rooted in quantum many-body methods (no qubits).
 
 ---
 
@@ -15,9 +20,10 @@ A post-training optimization stack for **YOLO11n-OBB** on **DOTA** aerial detect
 
 | Area | Status | Notes |
 | ---- | ------ | ----- |
-| **Core library** | Stable enough to run | ~98 pytest tests; CI on push/PR |
+| **Core library** | Stable enough to run | ~116 pytest tests; CI on push/PR |
 | **Phase 2 (low-rank + calibration)** | Done | Rank frontier + GT-matched ECE/CER |
 | **Phase 3B (structural selective)** | Validated on hold-out | Pareto-gain ~5–6% params, mAP preserved |
+| **Quantum selection (QAOA)** | Implemented | QUBO + QAOA on simulator; classical exact reference |
 | **Valohai DAG** | MVP implemented | Not yet battle-tested on Valohai cloud |
 | **ONNX / TensorRT export** | Multi-format CLI | Baseline ONNX/TS; structural via collapsed fallback or `.pt` no-fuse |
 | **Full DOTA scale** | Not started | MVP runs on DOTA128 (128 images) |
@@ -35,7 +41,7 @@ Reports: [`results/reports/qgeocompress_phase3b_holdout.md`](results/reports/qge
 
 - A **research codebase** to study GeoAI model compression with **deployment-oriented metrics** (not mAP-only).
 - A **post-training pipeline** prototype: train elsewhere → evaluate → probe layers → compress selectively → gate → export or reject.
-- An exploration of **quantum-inspired low-rank / structural factorization** applied to YOLO-OBB on aerial imagery (DOTA).
+- An exploration of **quantum-inspired low-rank / structural factorization** (SVD) plus **quantum QAOA** layer selection applied to YOLO-OBB on aerial imagery (DOTA).
 
 **What this project is not (yet)**
 
@@ -61,6 +67,7 @@ Phase 3A  Full structural low-rank replace            [failed — mAP collapse]
 Phase 3B  Selective structural + sensitivity probe    [done — in-sample]
 Phase 3B' Hold-out validation (80/24/24)               [done]
 Phase 3B'' Pareto-gain layer selection                 [done — deployable gate on hold-out]
+Phase Q   Quantum QAOA layer selection (QUBO)          [done — simulator + classical ref]
 Phase 4   Valohai DAG + export path                     [done — MVP + multi-format]
 Phase 5   Scale (full DOTA), latency proof, TensorRT    [planned — user GPU]
 ```
@@ -75,8 +82,9 @@ Phase 5   Scale (full DOTA), latency proof, TensorRT    [planned — user GPU]
 | **Models** | PyTorch, Ultralytics YOLO11n-OBB |
 | **Data** | DOTA128 (MVP, bundled in repo), DOTA / xView (extensions) |
 | **Metrics** | GT-matched calibration, ECE, CER@0.8, selective prediction |
+| **Quantum** | PennyLane (QAOA on `default.qubit` simulator) |
 | **MLOps** | Valohai (`valohai.yaml`), Docker |
-| **Quality** | pytest (~105 tests), ruff |
+| **Quality** | pytest (~116 tests), ruff, GitHub Actions CI |
 
 ---
 
@@ -87,7 +95,7 @@ Phase 5   Scale (full DOTA), latency proof, TensorRT    [planned — user GPU]
 - **Baseline training** — reproducible YOLO-OBB with explicit checkpoint paths
 - **Compression methods** — FP16, INT8 PTQ, magnitude pruning, in-place low-rank (SVD), structural low-rank
 - **Layer sensitivity probe** — per-layer mAP impact on a **select** split (never test)
-- **Selection strategies** — `sensitivity` (compressibility score) or **`pareto-gain`** (absolute param savings under mAP drop cap)
+- **Selection strategies** — `sensitivity` (compressibility score), **`pareto-gain`** (absolute param savings under mAP drop cap), or **`quantum-qaoa`** (QUBO solved by QAOA on a simulator)
 - **Hold-out protocol** — `scripts/create_dota128_holdout.py` → 80 train / 24 select / 24 test
 - **Reliability gate** — `scripts/check_reliability_gate.py` accept / research-only / reject
 - **Valohai DAG** — six steps in `valohai.yaml` + wrappers in `scripts/valohai/`
@@ -279,6 +287,24 @@ python scripts/compress_model.py \
 
 Probe output: `results/summaries/structural_layer_sensitivity.json`
 
+#### Quantum layer selection (QAOA)
+
+Instead of the greedy `pareto-gain` heuristic, select layers by solving the
+selection **QUBO** with **QAOA** on a simulator (`pip install -e ".[quantum]"`):
+
+```bash
+python scripts/compress_model.py \
+  --method structural-low-rank \
+  --rank-ratio 0.84 \
+  --weights "$BEST" \
+  --selection-strategy quantum-qaoa \
+  --quantum-backend qaoa \
+  --max-replaced-layers 5 \
+  --sensitivity-file results/summaries/structural_layer_sensitivity.json
+```
+
+`--quantum-backend`: `auto` (QAOA if PennyLane installed, else classical) · `qaoa` (require PennyLane) · `classical` (exact brute-force / greedy reference). Full formulation and honest scope in [`docs/QUANTUM.md`](docs/QUANTUM.md).
+
 ### 7. Hold-out validation (recommended for credible results)
 
 ```bash
@@ -404,20 +430,28 @@ Pipeline: `qgc-baseline-eval` → `qgc-structural-probe` → `qgc-compress-selec
 - **Structural serving** — direct ONNX/TorchScript blocked; use collapsed fallback or no-fuse `.pt` (see export matrix in `docs/PROJECT_PLAN.md`)
 - **Probe signal** — `local_output_error` not fully implemented; selection relies mainly on single-layer mAP drop.
 - **Ultralytics paths** — nested `runs/obb/runs/obb/runs/...` from default project settings.
-- **No CI/CD** — GitHub Actions runs `pytest` on push/PR (no GPU)
+- **Quantum scope** — QAOA runs on a **simulator** (≲20 layers); no real QPU and no quantum speedup is claimed. See [`docs/QUANTUM.md`](docs/QUANTUM.md).
+- **CI** — GitHub Actions runs `pytest` on push/PR; **no GPU** jobs in CI.
 
 ---
 
 ## Roadmap (what comes next)
 
-See [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) for the full end-to-end plan. Remaining future work:
+See [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) for the full end-to-end plan.
 
-1. **GPU tonight** — pareto BN=20, latency CUDA (`docs/GPU_RUNBOOK.md`)
-2. **Valohai cloud** — first end-to-end pipeline run with custom Docker image
-3. **Latency proof** — GPU benchmark on pareto-gain candidates vs baseline
-4. **Scale** — full DOTA or larger hold-out for publication-grade numbers
-5. **TensorRT** — engine build on GPU host with `tensorrt` extra
-6. **Parallel candidates** — Valohai branch top-3 / top-5 / top-8 → select-best
+**Non-GPU (next):**
+
+1. **Quantum annealing** — submit the same selection QUBO to D-Wave (Ocean SDK)
+2. **Warm-start QAOA** — seed angles from greedy/pareto; hard-constraint (slack) QUBO
+3. **Tensor-Train / MPS** — quantum-inspired weight factorization (method #2)
+4. **Valohai cloud** — first end-to-end pipeline run with custom Docker image
+5. **Parallel candidates** — Valohai branch top-3 / top-5 / top-8 → select-best
+
+**GPU (user-local):**
+
+6. **BN=20 + latency proof** — pareto CUDA benchmark vs baseline (`docs/GPU_RUNBOOK.md`)
+7. **Scale** — full DOTA or larger hold-out for publication-grade numbers
+8. **TensorRT** — engine build on GPU host with `tensorrt` extra
 
 Contributions and feedback welcome while the project is active.
 

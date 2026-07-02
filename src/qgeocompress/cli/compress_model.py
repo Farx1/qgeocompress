@@ -304,9 +304,21 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--selection-strategy",
-        choices=["all", "sensitivity", "pareto-gain"],
+        choices=["all", "sensitivity", "pareto-gain", "quantum-qaoa"],
         default="all",
-        help="Layer selection for structural-low-rank (sensitivity or pareto-gain require probe JSON)",
+        help=(
+            "Layer selection for structural-low-rank. sensitivity/pareto-gain/quantum-qaoa "
+            "require a probe JSON. quantum-qaoa solves the selection QUBO with QAOA."
+        ),
+    )
+    parser.add_argument(
+        "--quantum-backend",
+        choices=["auto", "qaoa", "classical"],
+        default="auto",
+        help=(
+            "Solver for quantum-qaoa selection: auto (QAOA if PennyLane is installed, "
+            "else classical), qaoa (require PennyLane), or classical (exact/greedy)."
+        ),
     )
     parser.add_argument(
         "--max-map50-drop",
@@ -428,6 +440,7 @@ def main(argv: list[str] | None = None) -> None:
         target_layers=args.target_layers,
         target_scope=args.target_scope,
         selection_strategy=args.selection_strategy,
+        quantum_backend=args.quantum_backend,
         max_replaced_layers=args.max_replaced_layers,
         bn_recalibration_batches=args.bn_recalibration_batches,
         dataset=args.dataset,
@@ -494,6 +507,11 @@ def main(argv: list[str] | None = None) -> None:
         "rank_ratio": args.rank_ratio if args.method in ("low-rank", "structural-low-rank") else None,
         "structural_compression": args.method == "structural-low-rank",
         "selection_strategy": args.selection_strategy if args.method == "structural-low-rank" else None,
+        "quantum_backend": (
+            args.quantum_backend
+            if args.method == "structural-low-rank" and args.selection_strategy == "quantum-qaoa"
+            else None
+        ),
         "max_replaced_layers": args.max_replaced_layers,
         "bn_recalibration_batches": args.bn_recalibration_batches,
         **det_metrics,
