@@ -420,6 +420,7 @@ Pipeline: `qgc-baseline-eval` → `qgc-structural-probe` → `qgc-compress-selec
 | **3A** | Full structural r=0.84 → mAP collapse | Reproduced |
 | **3B in-sample** | Selective top-5 → mAP 0.888, −4.75% params | In-sample only |
 | **3B hold-out** | Pareto top-5 → mAP 0.933, −5.63% params | Strict split (n=24 test) |
+| **Phase Q hold-out** | QAOA simulator top-5 → mAP 0.915, −5.36% params, gate deployable | QUBO + PennyLane simulator (12-layer subset) |
 
 ---
 
@@ -438,6 +439,20 @@ Pipeline: `qgc-baseline-eval` → `qgc-structural-probe` → `qgc-compress-selec
 ## Roadmap (what comes next)
 
 See [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) for the full end-to-end plan.
+
+### Next step — full model, real comparison
+
+All current hold-out results are **proof-of-method on DOTA128** (128 images, 24-image test split). They are directional, not publication-grade. The **next step** is to run the **same pipeline on a complete, production-scale model and dataset** and **compare all methods head-to-head** under identical conditions:
+
+| What to compare | Methods |
+| --------------- | ------- |
+| Layer selection | pareto-gain · sensitivity · **quantum-qaoa (simulator)** · classical QUBO |
+| Compression | structural selective · SVD in-place · baseline |
+| Metrics | mAP50 · CER@0.8 · ECE · **real latency (GPU)** · params · model size · export path |
+
+**Target:** full DOTA (or a larger hold-out), same train/select/test protocol, one unified Phase 3C report with latency columns filled, and a clear answer to: *does quantum layer selection beat classical heuristics at scale, and does compression actually speed up inference?*
+
+Until that run, treat DOTA128 numbers as **portfolio evidence**, not final performance claims.
 
 **Non-GPU (next):**
 

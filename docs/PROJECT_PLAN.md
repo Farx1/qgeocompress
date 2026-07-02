@@ -87,9 +87,11 @@ into the compression pipeline, with a classical exact solver as ground truth.
 | Tests | `tests/test_quantum_selection.py` (11 tests) | Done |
 | Docs | `docs/QUANTUM.md` | Done |
 
-**Result on hold-out probe (8 layers, k=5):** QAOA reached ≈97% of the classical
-optimum energy. No quantum *advantage* claimed at this scale — the value is a
-clean, hardware-portable (D-Wave/annealer-ready) encoding. See `docs/QUANTUM.md`.
+**Result on hold-out (QAOA simulator, 12-layer subset, k=5):** mAP50 **0.915**,
+**−5.36% params**, gate **`deployable_compression_candidate`** — comparable to
+pareto top-5. Classical greedy QUBO on 28 layers under-performed (−0.21% params).
+No quantum *advantage* claimed at this scale; value is a portable QUBO encoding.
+See `docs/QUANTUM.md`.
 
 ### Phase 4 — Cloud, scale, and quantum extensions (future, non-GPU + GPU)
 
@@ -101,7 +103,8 @@ clean, hardware-portable (D-Wave/annealer-ready) encoding. See `docs/QUANTUM.md`
 | 4.4 | Warm-start QAOA from greedy/pareto seed | Planned | No |
 | 4.5 | Tensor-Train / MPS weight factorization (quantum-inspired method #2) | Planned | No |
 | 4.6 | Full DOTA or larger hold-out | Planned | Yes |
-| 4.7 | GPU latency proof vs baseline | User-local (GPU runbook) | Yes |
+| 4.7 | **Head-to-head comparison** (pareto vs QAOA vs SVD vs baseline) on full model | Planned | Yes |
+| 4.8 | GPU latency proof vs baseline | User-local (GPU runbook) | Yes |
 
 ---
 
@@ -192,7 +195,11 @@ vh pipeline run qgc-post-training-compression --adhoc
 - [x] `docs/PROJECT_PLAN.md` (this file)
 - [x] README + PHASE3_PLAN updated
 
-### Future work (not blocking complete)
+### Future work (not blocking MVP)
+
+**Next milestone — full model & head-to-head comparison:**
+
+Scale from DOTA128 to a **complete aerial detection setup** (full DOTA or equivalent), re-run baseline → probe → compress (pareto · sensitivity · quantum-qaoa) → calibrate → gate → **GPU latency benchmark** → export, and publish a single comparison table where every method is evaluated under the **same hold-out protocol**. This is the step that turns proof-of-method into credible, deployable evidence.
 
 **Non-GPU (next):**
 
