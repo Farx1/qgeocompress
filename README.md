@@ -1,6 +1,6 @@
 # Q-GEOCompress
 
-> **Work in progress** — active research & engineering project (M2 internship portfolio).  
+> **Work in progress** an active research & engineering project.  
 > Not production-ready. APIs, results, and the Valohai DAG may change between commits.
 
 Reliability-preserving, quantum-inspired compression for deployable geospatial AI — reduce inference cost (latency, VRAM, model size) without breaking detection performance or operational trust.
