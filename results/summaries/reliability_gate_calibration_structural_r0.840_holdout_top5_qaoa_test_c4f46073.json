@@ -1,0 +1,26 @@
+{
+  "gate_status": "methodologically_valid",
+  "accepted_for_export": false,
+  "checks": {
+    "status_ok": true,
+    "map50_within_tolerance": true,
+    "cer08_within_tolerance": true,
+    "param_reduction_met": false
+  },
+  "thresholds": {
+    "max_map50_drop": 0.1,
+    "max_cer08_delta": 0.02,
+    "min_param_reduction_pct": 2.0,
+    "require_status_ok": true
+  },
+  "baseline_map50": 0.9286933889828436,
+  "candidate_map50": 0.8944880246341368,
+  "map50_drop_vs_baseline": 0.034205,
+  "baseline_cer08": 0.004292,
+  "candidate_cer08": 0.008889,
+  "cer08_delta_vs_baseline": 0.004597,
+  "real_param_reduction_pct": 0.21,
+  "candidate_weights": "runs/compressed/structural_low_rank/structural_low_rank_r0.840_holdout_top5_qaoa.pt",
+  "baseline_run_id": "calibration_baseline_holdout_test_baseline_3cebaa50",
+  "candidate_run_id": "calibration_structural_r0.840_holdout_top5_qaoa_test_c4f46073"
+}
