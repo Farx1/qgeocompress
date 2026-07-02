@@ -1,0 +1,142 @@
+{
+  "method": "structural-probe-qaoa-subset",
+  "rank_ratio": 0.84,
+  "dataset": "dota128",
+  "data_yaml": "/home/jules-sayad-barth/projectscursor/qgeocompress/datasets/dota128_holdout/dota128_holdout_select.yaml",
+  "baseline_map50": 0.9590918036147079,
+  "num_candidates": 12,
+  "layers": [
+    {
+      "layer_name": "model.7.conv",
+      "params_before": 295168,
+      "params_after": 180480,
+      "param_gain_pct": 38.8552,
+      "local_output_error": null,
+      "map50_single_layer": 0.9586334198466345,
+      "map50_drop": 0.000458,
+      "compressibility_score": 84651.8519
+    },
+    {
+      "layer_name": "model.5.conv",
+      "params_before": 147584,
+      "params_after": 137088,
+      "param_gain_pct": 7.1119,
+      "local_output_error": null,
+      "map50_single_layer": 0.9593011739857132,
+      "map50_drop": 0.0,
+      "compressibility_score": 7111900.0
+    },
+    {
+      "layer_name": "model.20.conv",
+      "params_before": 147584,
+      "params_after": 137088,
+      "param_gain_pct": 7.1119,
+      "local_output_error": null,
+      "map50_single_layer": 0.9590708127210515,
+      "map50_drop": 2.1e-05,
+      "compressibility_score": 323268.1818
+    },
+    {
+      "layer_name": "model.13.m.0.cv2.conv",
+      "params_before": 18496,
+      "params_after": 11328,
+      "param_gain_pct": 38.7543,
+      "local_output_error": null,
+      "map50_single_layer": 0.9584999576006173,
+      "map50_drop": 0.000592,
+      "compressibility_score": 65352.9511
+    },
+    {
+      "layer_name": "model.19.m.0.cv2.conv",
+      "params_before": 18496,
+      "params_after": 11328,
+      "param_gain_pct": 38.7543,
+      "local_output_error": null,
+      "map50_single_layer": 0.9566236425599399,
+      "map50_drop": 0.002468,
+      "compressibility_score": 15696.3548
+    },
+    {
+      "layer_name": "model.3.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.9599099384124629,
+      "map50_drop": 0.0,
+      "compressibility_score": 7972300.0
+    },
+    {
+      "layer_name": "model.8.m.0.m.0.cv2.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.959133080802425,
+      "map50_drop": 0.0,
+      "compressibility_score": 7972300.0
+    },
+    {
+      "layer_name": "model.8.m.0.m.1.cv2.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.959092125396608,
+      "map50_drop": 0.0,
+      "compressibility_score": 7972300.0
+    },
+    {
+      "layer_name": "model.22.m.0.m.0.cv1.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.9592535200494193,
+      "map50_drop": 0.0,
+      "compressibility_score": 7972300.0
+    },
+    {
+      "layer_name": "model.22.m.0.m.0.cv2.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.9591511832719359,
+      "map50_drop": 0.0,
+      "compressibility_score": 7972300.0
+    },
+    {
+      "layer_name": "model.22.m.0.m.1.cv1.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.9590918036147079,
+      "map50_drop": 0.0,
+      "compressibility_score": 7972300.0
+    },
+    {
+      "layer_name": "model.17.conv",
+      "params_before": 36928,
+      "params_after": 33984,
+      "param_gain_pct": 7.9723,
+      "local_output_error": null,
+      "map50_single_layer": 0.9590819881377776,
+      "map50_drop": 1e-05,
+      "compressibility_score": 724754.5455
+    }
+  ],
+  "top_layers": [
+    "model.13.m.0.cv1.conv",
+    "model.4.m.0.cv1.conv",
+    "model.16.m.0.cv1.conv",
+    "model.6.m.0.m.0.cv2.conv",
+    "model.6.m.0.m.1.cv1.conv",
+    "model.3.conv",
+    "model.8.m.0.m.0.cv2.conv",
+    "model.8.m.0.m.1.cv2.conv",
+    "model.22.m.0.m.0.cv1.conv",
+    "model.22.m.0.m.0.cv2.conv"
+  ]
+}
