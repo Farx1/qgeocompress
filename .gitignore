@@ -55,3 +55,6 @@ valohai_outputs_smoke/
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Local tooling (not published)
+.gitnexus/
