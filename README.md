@@ -1,33 +1,72 @@
 # Q-GEOCompress
 
-> Reliability-preserving quantum-inspired compression for deployable geospatial AI — reduce inference cost (latency, VRAM, model size) without breaking detection performance or operational trust.
+> Reliability-preserving, quantum-inspired compression for deployable geospatial AI — reduce inference cost (latency, VRAM, model size) without breaking detection performance or operational trust.
+
+A post-training optimization stack for **YOLO11n-OBB** on **DOTA** aerial detection: compress checkpoints under **quality gates** (mAP, ECE, CER@0.8), not blind size reduction.
 
 ---
 
 ## Overview
 
-- Built to benchmark **GeoAI model compression** on aerial/satellite detection (DOTA OBB) with deployment-oriented metrics.
-- Combines **classical compression** (FP16, INT8, pruning) with **quantum-inspired low-rank factorization**.
-- Measures not only **mAP** but also **calibration (ECE)**, **confident errors**, and **robustness under corruptions**.
+- Benchmark **GeoAI model compression** on oriented bounding-box detection with deployment-oriented metrics.
+- Combine **classical methods** (FP16, INT8, pruning) with **low-rank / structural factorization** inspired by quantum circuit compression ideas.
+- Measure **mAP** alongside **calibration (ECE)**, **confident error rate (CER@0.8)**, latency, and robustness.
+- Integrate as a **Valohai post-training DAG**: baseline eval → layer probe → selective compression → inference compare → quality gate → export or reject.
+
+**Current status (Phase 3B hold-out):** selective structural compression with **pareto-gain** layer selection preserves mAP and reliability while cutting ~**5–6%** of parameters on a strict 80/24/24 train/select/test split. Naive full-layer replacement remains non-viable.
+
+Reports: [`results/reports/qgeocompress_phase3b_holdout.md`](results/reports/qgeocompress_phase3b_holdout.md) · [`results/reports/qgeocompress_phase3b_summary.md`](results/reports/qgeocompress_phase3b_summary.md)
 
 ---
 
 ## Tech Stack
 
-- **Languages**: Python 3.11+
-- **Frameworks**: PyTorch, Ultralytics YOLO OBB
-- **Data**: DOTA128 (MVP), DOTA, xView (extensions)
-- **Tools**: ONNX, pytest, ruff
+| Layer | Tools |
+| ----- | ----- |
+| **Languages** | Python 3.11+ |
+| **Models** | PyTorch, Ultralytics YOLO11n-OBB |
+| **Data** | DOTA128 (MVP), DOTA / xView (extensions) |
+| **Metrics** | GT-matched calibration, ECE, CER, selective prediction |
+| **MLOps** | Valohai (`valohai.yaml`), Docker |
+| **Quality** | pytest (~95 tests), ruff |
 
 ---
 
 ## Features
 
-- **Baseline training** — YOLO-OBB on DOTA128 / DOTA with reproducible configs
-- **Compression pipeline** — FP16, INT8 PTQ, magnitude pruning, low-rank factorization
-- **System benchmarks** — latency (p50/p95), throughput, VRAM, model size
-- **Trust metrics** — ECE, temperature scaling, confident-error rate, selective prediction
-- **Robustness** — synthetic corruptions (cloud, blur, noise, JPEG, brightness)
+- **Baseline training** — reproducible YOLO-OBB training with explicit checkpoint paths
+- **Compression methods** — FP16, INT8 PTQ, magnitude pruning, in-place low-rank (SVD), structural low-rank
+- **Layer sensitivity probe** — per-layer mAP impact before selective replacement
+- **Selection strategies** — `sensitivity` (compressibility score) or **`pareto-gain`** (param savings under mAP drop cap)
+- **Hold-out protocol** — strict train / select / test splits (no test leakage for probe or BN)
+- **Reliability gate** — accept/reject compressed models vs baseline thresholds
+- **Valohai DAG** — six-step post-training pipeline with versioned artifacts
+- **System benchmarks** — latency, throughput, VRAM, model size
+
+---
+
+## How It Works
+
+```text
+trained checkpoint
+  → baseline eval (test)          # mAP, ECE, CER reference
+  → structural probe (select)     # layer sensitivity JSON
+  → selective compression         # top-k layers, BN recalibration (train)
+  → inference compare (test)      # baseline vs compressed
+  → quality gate                  # accept / research-only / reject
+  → export if accepted            # .pt (+ ONNX when supported)
+```
+
+**Quality gate rules (defaults):**
+
+| Check | Threshold |
+| ----- | --------- |
+| mAP50 drop vs baseline | ≤ 0.10 |
+| CER@0.8 delta vs baseline | ≤ +0.02 |
+| Parameter reduction (deployable) | ≥ 2% |
+
+**Gate statuses:** `deployable_compression_candidate` · `methodologically_valid` · `rejected`  
+**Valohai aliases:** `accepted_for_export` · `accepted_for_research` · `rejected`
 
 ---
 
@@ -35,12 +74,20 @@
 
 ```text
 qgeocompress/
-├── configs/          # dataset, model, experiment YAML configs
-├── src/qgeocompress/ # core library
-├── scripts/          # thin CLI wrappers
-├── tests/            # unit tests
-├── notebooks/        # analysis notebooks (optional)
-└── results/          # JSON summaries, figures, reports
+├── configs/                 # dataset, model, experiment YAML
+├── src/qgeocompress/
+│   ├── compression/         # low-rank, structural, probe, pruning
+│   ├── evaluation/          # calibration, GT matching, reliability gate
+│   └── valohai/             # pipeline step logic
+├── scripts/                 # CLI entry points
+│   └── valohai/             # Valohai step wrappers
+├── tests/
+├── valohai.yaml             # Valohai steps + pipeline definition
+├── Dockerfile               # production runtime image
+└── results/
+    ├── summaries/           # JSON run artifacts
+    ├── figures/
+    └── reports/
 ```
 
 ---
@@ -57,13 +104,15 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-### 2. Prepare dataset (DOTA128 auto-downloads via Ultralytics)
+### 2. Prepare dataset
+
+DOTA128 downloads automatically via Ultralytics on first use:
 
 ```bash
 python scripts/prepare_dataset.py --dataset dota128
 ```
 
-### 3. Train baseline (MVP: 5 epochs on DOTA128)
+### 3. Train baseline
 
 ```bash
 python scripts/train_baseline.py \
@@ -73,145 +122,86 @@ python scripts/train_baseline.py \
   --imgsz 640
 ```
 
-### 4. Benchmark inference
+Always pin the baseline checkpoint explicitly:
 
 ```bash
+BEST="runs/obb/runs/baseline/train/weights/best.pt"
+```
+
+### 4. Compress and benchmark
+
+```bash
+python scripts/compress_model.py --method fp16 --weights "$BEST"
+python scripts/compress_model.py --method low-rank --rank-ratio 0.84 --weights "$BEST"
+
 python scripts/benchmark_inference.py \
-  --weights runs/obb/runs/baseline/train/weights/best.pt \
+  --weights "$BEST" \
   --dataset dota128 \
   --batch-size 1 4 8
 ```
 
-### 5. Compress and compare
-
-Always use the **baseline** checkpoint explicitly (never `find runs ... best.pt`):
+Rank sensitivity sweep (Phase 2A):
 
 ```bash
-BEST="runs/obb/runs/baseline/train/weights/best.pt"
-
-python scripts/compress_model.py --method fp16 --weights "$BEST"
-python scripts/compress_model.py --method low-rank --rank-ratio 0.85 --weights "$BEST"
-```
-
-Rank sensitivity sweep (no fine-tune) around the stability boundary:
-
-```bash
-BEST="runs/obb/runs/baseline/train/weights/best.pt"
 for R in 0.88 0.86 0.84 0.82 0.80; do
   python scripts/compress_model.py --method low-rank --rank-ratio "$R" --weights "$BEST"
 done
 python scripts/make_report.py
 ```
 
-Phase 2A report outputs:
-- `results/summaries/comparison_table.csv` — baseline + low-rank sweep only (fine-tune excluded by default)
-- `results/figures/rank_ratio_vs_map50.png` — rank sensitivity curve
-- `results/summaries/phase2a_summary.md` — auto-generated findings
+### 5. Calibration and reliability (Phase 2B)
 
-To include archived fine-tune runs: `python scripts/make_report.py --include-unsupported-finetune`
-
-### 7. Phase 2B — GT-matched calibration
-
-Evaluate reliability (ECE, CER, selective prediction) with real GT matching:
+GT-matched ECE, CER, and selective prediction:
 
 ```bash
-BEST="runs/obb/runs/baseline/train/weights/best.pt"
-
 python scripts/evaluate_calibration.py \
-  --weights "$BEST" --dataset dota128 --compression baseline --iou-threshold 0.5
-
-python scripts/evaluate_calibration.py \
-  --weights runs/compressed/low_rank_r0.880/low_rank_r0.880.pt \
-  --dataset dota128 --compression low-rank --rank-ratio 0.88 --iou-threshold 0.5
+  --weights "$BEST" \
+  --dataset dota128 \
+  --compression baseline
 
 python scripts/evaluate_calibration.py \
   --weights runs/compressed/low_rank_r0.840/low_rank_r0.840.pt \
-  --dataset dota128 --compression low-rank --rank-ratio 0.84 --iou-threshold 0.5
-
-python scripts/evaluate_calibration.py \
-  --weights runs/compressed/low_rank_r0.820/low_rank_r0.820.pt \
-  --dataset dota128 --compression low-rank --rank-ratio 0.82 --iou-threshold 0.5
-
-python scripts/evaluate_calibration.py \
-  --weights runs/compressed/low_rank_r0.800/low_rank_r0.800.pt \
-  --dataset dota128 --compression low-rank --rank-ratio 0.80 --iou-threshold 0.5
+  --dataset dota128 \
+  --compression low-rank \
+  --rank-ratio 0.84
 
 python scripts/make_calibration_report.py
 ```
 
-Outputs: `results/summaries/calibration_*.json`, `calibration_comparison_table.csv`, `calibration_summary.md`, reliability and coverage-risk figures.
+Phase 2 reports: `results/reports/qgeocompress_phase2_report.md`
 
-### 8. Phase 2 scientific report
+### 6. Structural compression (Phase 3B)
 
-After completing Phase 2A and 2B:
-
-```bash
-python scripts/make_report.py
-python scripts/make_calibration_report.py
-```
-
-Read the consolidated report:
-
-```text
-results/reports/qgeocompress_phase2_report.md
-results/reports/qgeocompress_phase2_internal_note.md
-```
-
-### 9. Phase 3 — Structural low-rank (deployable compression)
-
-Plan: [`docs/PHASE3_PLAN.md`](docs/PHASE3_PLAN.md)
-
-Phase 3A (full replace) confirmed naive structural compression is too aggressive at r=0.84. Phase 3B adds **sensitivity-guided selective** replacement (QCompress-inspired).
+Phase 3A showed **full structural replacement at r=0.84 breaks mAP**. Phase 3B adds **selective**, sensitivity-guided replacement.
 
 ```bash
-source .venv/bin/activate
-BEST="runs/obb/runs/baseline/train/weights/best.pt"
-
-# Step 1 — probe each candidate layer (slow: ~1 val per layer)
+# Step 1 — probe (~1 validation pass per candidate layer)
 python scripts/compress_model.py \
   --method structural-probe \
   --rank-ratio 0.84 \
   --weights "$BEST" \
   --target-layers backbone neck
 
-# Step 2 — selective structural compression (requires probe JSON)
+# Step 2 — selective compression (recommended: pareto-gain)
 python scripts/compress_model.py \
   --method structural-low-rank \
   --rank-ratio 0.84 \
   --weights "$BEST" \
-  --target-layers backbone neck \
-  --selection-strategy sensitivity \
-  --max-replaced-layers 3 \
-  --bn-recalibration-batches 20
-
-python scripts/compress_model.py \
-  --method structural-low-rank \
-  --rank-ratio 0.84 \
-  --weights "$BEST" \
-  --target-layers backbone neck \
-  --selection-strategy sensitivity \
+  --selection-strategy pareto-gain \
   --max-replaced-layers 5 \
+  --sensitivity-file results/summaries/structural_layer_sensitivity.json \
   --bn-recalibration-batches 20
 ```
 
-Probe output: `results/summaries/structural_layer_sensitivity.json` (per-layer `compressibility_score`, `map50_drop`, `local_output_error`).
+Probe output: `results/summaries/structural_layer_sensitivity.json`
 
-Quick debug probe (first N layers only): add `--probe-max-layers 3`.
+### 7. Hold-out validation (recommended)
 
-### 10. Post-training pipeline (hold-out + quality gate)
-
-Strict split: **80 train / 24 select / 24 test** — never use test for probe or BN.
-
-```text
-training → baseline eval (test) → probe (select) → selective compress
-→ BN recalibration (train) → eval + calibration (test) → quality gate → export
-```
+Strict split: **80 train / 24 select / 24 test** — never use test for probe or BN recalibration.
 
 ```bash
-# 1. Create split
 python scripts/create_dota128_holdout.py --seed 42
 
-# 2. Train baseline (train=80, val=select for Ultralytics monitoring)
 python scripts/train_baseline.py \
   --data-yaml datasets/dota128_holdout/dota128_holdout_select.yaml \
   --epochs 10 --project runs/obb/runs --name baseline_holdout
@@ -219,127 +209,113 @@ python scripts/train_baseline.py \
 BEST="runs/obb/runs/obb/runs/baseline_holdout/weights/best.pt"
 HOLDOUT=datasets/dota128_holdout
 
-# 3. Baseline reference on test
+# Baseline on test
 python scripts/evaluate_calibration.py \
-  --weights "$BEST" --data-yaml "$HOLDOUT/dota128_holdout_test.yaml" \
-  --compression baseline --run-label holdout_test_baseline
+  --weights "$BEST" \
+  --data-yaml "$HOLDOUT/dota128_holdout_test.yaml" \
+  --compression baseline \
+  --run-label holdout_test_baseline
 
-# 4. Probe on select (never test)
+# Probe on select only
 python scripts/compress_model.py \
-  --method structural-probe --rank-ratio 0.84 --weights "$BEST" \
+  --method structural-probe \
+  --rank-ratio 0.84 \
+  --weights "$BEST" \
   --data-yaml "$HOLDOUT/dota128_holdout_select.yaml" \
   --run-label holdout_select
 
-# 5. Selective compress — sensitivity or pareto-gain
+# Compress with pareto-gain
 python scripts/compress_model.py \
-  --method structural-low-rank --rank-ratio 0.84 --weights "$BEST" \
-  --selection-strategy pareto-gain --max-replaced-layers 5 \
+  --method structural-low-rank \
+  --rank-ratio 0.84 \
+  --weights "$BEST" \
+  --selection-strategy pareto-gain \
+  --max-replaced-layers 5 \
   --sensitivity-file results/summaries/structural_layer_sensitivity_holdout_select.json \
   --bn-data-yaml "$HOLDOUT/dota128_holdout_train.yaml" \
   --eval-data-yaml "$HOLDOUT/dota128_holdout_test.yaml" \
+  --bn-recalibration-batches 20 \
   --run-label holdout_top5_pareto
 
-# 6. Calibration on test + quality gate
-python scripts/evaluate_calibration.py \
-  --weights runs/compressed/structural_low_rank/structural_low_rank_r0.840_holdout_top5_pareto.pt \
-  --data-yaml "$HOLDOUT/dota128_holdout_test.yaml" \
-  --compression structural-low-rank --rank-ratio 0.84 \
-  --run-label holdout_top5_pareto_test
-
+# Quality gate
 python scripts/check_reliability_gate.py \
   --baseline results/summaries/calibration_baseline_holdout_test_baseline_3cebaa50.json \
-  --candidate results/summaries/calibration_structural_r0.840_holdout_top5_sens_test_e751441c.json \
-  --compression-summary results/summaries/structural-low-rank_8438269f.json
+  --candidate results/summaries/calibration_structural_r0.840_holdout_top5_pareto_test_f215351d.json \
+  --compression-summary results/summaries/structural-low-rank_11845535.json
 ```
 
-Gate statuses: `deployable_compression_candidate` | `methodologically_valid` | `rejected`.
+**Hold-out results (test split):**
 
-Hold-out report: [`results/reports/qgeocompress_phase3b_holdout.md`](results/reports/qgeocompress_phase3b_holdout.md)
+| Method | mAP50 | CER@0.8 | Params | Gate |
+| ------ | ----: | ------: | -----: | ---- |
+| Baseline | 0.929 | 0.004 | ref | — |
+| Top-5 sensitivity | 0.879 | 0.005 | −0.21% | methodologically_valid |
+| Top-5 pareto-gain | **0.933** | 0.005 | **−5.63%** | **deployable** |
+| Full structural r=0.84 | 0.266 | — | −7.34% | rejected |
 
-### 11. Valohai post-training DAG
+### 8. Valohai post-training DAG
 
-Production integration target: a **Valohai pipeline** with quality gates, not a standalone compression script.
+Production target: orchestrated pipeline with versioned artifacts, not a one-off script.
 
-```text
-checkpoint → baseline-eval → structural-probe → compress-selective
-→ inference-compare → quality-gate → export / reject
-```
-
-Config: [`valohai.yaml`](valohai.yaml) — steps `qgc-*` in [`scripts/valohai/`](scripts/valohai/).
+Config: [`valohai.yaml`](valohai.yaml) · Wrappers: [`scripts/valohai/`](scripts/valohai/)
 
 ```bash
-# Lint + ad-hoc pipeline (requires Valohai CLI + project linked)
+# Cloud (Valohai CLI + linked project)
 vh lint
 vh pipeline run qgc-post-training-compression --adhoc
 
-# Local step smoke test (writes to ./valohai_outputs/)
+# Local smoke test
 export VALOHAI_OUTPUTS_DIR=./valohai_outputs
-BEST="runs/obb/runs/obb/runs/baseline_holdout/weights/best.pt"
-HOLDOUT=datasets/dota128_holdout
-
 python scripts/valohai/baseline_eval_step.py \
   --model "$BEST" --test-yaml "$HOLDOUT/dota128_holdout_test.yaml"
-
-python scripts/valohai/structural_probe_step.py \
-  --model "$BEST" --select-yaml "$HOLDOUT/dota128_holdout_select.yaml"
-
-python scripts/valohai/compress_selective_step.py \
-  --model "$BEST" \
-  --sensitivity-json valohai_outputs/structural_layer_sensitivity.json \
-  --train-yaml "$HOLDOUT/dota128_holdout_train.yaml" \
-  --test-yaml "$HOLDOUT/dota128_holdout_test.yaml" \
-  --selection-strategy pareto-gain --max-replaced-layers 5
-
-python scripts/valohai/inference_compare_step.py \
-  --baseline-model "$BEST" \
-  --compressed-model valohai_outputs/compressed_model.pt \
-  --test-yaml "$HOLDOUT/dota128_holdout_test.yaml"
-
-python scripts/valohai/quality_gate_step.py \
-  --comparison-metrics valohai_outputs/comparison_metrics.json \
-  --compression-summary valohai_outputs/compression_summary.json \
-  --comparison-full valohai_outputs/comparison_full.json
-
-python scripts/valohai/export_if_accepted_step.py \
-  --quality-gate valohai_outputs/quality_gate.json \
-  --compressed-model valohai_outputs/compressed_model.pt \
-  --compression-summary valohai_outputs/compression_summary.json \
-  --final-report valohai_outputs/final_report.md
+# … probe → compress → inference_compare → quality_gate → export_if_accepted
 ```
 
-**Docker image** (production Valohai runs):
+**Docker image for production runs:**
 
 ```bash
 docker build -t qgeocompress:latest .
-# then set image: your-registry/qgeocompress:latest in valohai.yaml
+# Set image: your-registry/qgeocompress:latest in valohai.yaml
 ```
 
-Gate statuses (Valohai): `accepted_for_export` | `accepted_for_research` | `rejected`.
+Pipeline steps: `qgc-baseline-eval` → `qgc-structural-probe` → `qgc-compress-selective` → `qgc-inference-compare` → `qgc-quality-gate` → `qgc-export-if-accepted`
 
-Export step (`qgc-export-if-accepted`): registers `export_model.pt` only when `accepted_for_export`; ONNX attempted for standard checkpoints (skipped for structural `no-fuse` models).
+Outputs land in `/valohai/outputs/` (or `VALOHAI_OUTPUTS_DIR`). Each step emits JSON metrics to stdout for Valohai experiment tracking.
 
-Outputs land in `/valohai/outputs/` (or `VALOHAI_OUTPUTS_DIR`). Each step prints JSON metrics to stdout for Valohai experiment tracking.
-
-### 6. Calibrate and report
-
-```bash
-python scripts/calibrate_model.py --weights runs/compressed/low_rank.pt
-python scripts/make_report.py --results-dir results/summaries
-```
+> **Note:** Structural checkpoints require **no-fuse** inference. ONNX export is attempted only for standard models; structural export remains experimental.
 
 ---
 
-## MVP Experiments
+## Key Results Summary
 
-| ID | Method              | Goal                          |
-|----|---------------------|-------------------------------|
-| E0 | Baseline FP32       | Reference mAP / latency / ECE |
-| E1 | FP16                | Fast baseline compression     |
-| E2 | INT8 PTQ            | Aggressive size reduction     |
-| E3 | Low-rank (r=0.5)    | Quantum-inspired trade-off    |
-| E4 | Low-rank (r=0.25)   | Stronger compression          |
+| Phase | Finding |
+| ----- | ------- |
+| **2A** | Low-rank viable frontier around r ≈ 0.82–0.84 |
+| **2B** | Baseline mAP50 ≈ 0.954, CER@0.8 ≈ 0.022 on DOTA128 |
+| **3A** | Full structural r=0.84 → mAP collapse (~0.06 in-sample) |
+| **3B in-sample** | Selective top-5 sensitivity → mAP 0.888, −4.75% params |
+| **3B hold-out** | Pareto-gain top-5 → mAP 0.933, −5.63% params, CER stable |
 
-Target output: a **latency vs mAP** scatter plot with point size = VRAM and color = ECE.
+---
+
+## Possible Improvements
+
+- Scale validation to **full DOTA** or larger hold-out splits
+- Fix activation-based `local_output_error` in the structural probe
+- Prove **latency / VRAM** gains on GPU for pareto-gain candidates
+- ONNX / TensorRT export path for structural layers (or collapsed fallback)
+- Parallel Valohai branch: top-3 / top-5 / top-8 → select-best candidate
+- CI: pytest + `vh lint` on pull requests
+
+---
+
+## About
+
+**Jules Barth** — M2 Data & AI Engineering, ESILV (Paris). Focus on LLMs, agentic AI, privacy-preserving ML, and quantum computing.
+
+- Portfolio: [julesbarth-myportfolio.fr](https://julesbarth-myportfolio.fr)
+- LinkedIn: [linkedin.com/in/jules-barth](https://www.linkedin.com/in/jules-barth)
+- GitHub: [github.com/Farx1](https://github.com/Farx1)
 
 ---
 
