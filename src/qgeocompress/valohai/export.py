@@ -5,38 +5,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from qgeocompress.models.export_core import _has_structural_layers, run_multi_format_export
 from qgeocompress.models.load_model import model_size_mb
 
 
-def _has_structural_layers(weights: Path) -> bool:
-    from ultralytics import YOLO
-
-    from qgeocompress.compression.structural_low_rank import StructuralLowRankConv2d
-
-    model = YOLO(str(weights), task="obb")
-    return any(isinstance(m, StructuralLowRankConv2d) for m in model.model.modules())
-
-
 def _try_onnx_export(weights: Path, onnx_path: Path, imgsz: int = 640) -> dict[str, Any]:
-    if _has_structural_layers(weights):
-        return {
-            "attempted": True,
-            "success": False,
-            "path": None,
-            "reason": "StructuralLowRankConv2d requires no-fuse; ONNX export not supported in MVP",
-        }
-    try:
-        from ultralytics import YOLO
+    """Backward-compatible ONNX attempt wrapper."""
+    from qgeocompress.models.export_core import try_onnx_export
 
-        model = YOLO(str(weights), task="obb")
-        model.export(format="onnx", imgsz=imgsz, simplify=True)
-        default_onnx = weights.with_suffix(".onnx")
-        if default_onnx.exists():
-            shutil.copy2(default_onnx, onnx_path)
-            return {"attempted": True, "success": True, "path": str(onnx_path), "reason": None}
-        return {"attempted": True, "success": False, "path": None, "reason": "ONNX file not produced"}
-    except Exception as exc:
-        return {"attempted": True, "success": False, "path": None, "reason": str(exc)}
+    return try_onnx_export(weights, onnx_path, imgsz=imgsz)
 
 
 def run_export_if_accepted(
@@ -47,7 +24,10 @@ def run_export_if_accepted(
     final_report_path: Path | None = None,
     output_dir: Path,
     try_onnx: bool = True,
+    try_torchscript: bool = True,
     imgsz: int = 640,
+    device: str = "cpu",
+    collapsed_fallback: bool = True,
 ) -> dict[str, Any]:
     """Register or reject compressed checkpoint based on quality gate status."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -68,25 +48,35 @@ def run_export_if_accepted(
     }
 
     if status == "accepted_for_export":
-        export_pt = output_dir / "export_model.pt"
-        shutil.copy2(compressed_model, export_pt)
-        onnx_result = _try_onnx_export(compressed_model, output_dir / "export_model.onnx", imgsz=imgsz) if try_onnx else {
-            "attempted": False,
-            "success": False,
-            "path": None,
-            "reason": "ONNX export disabled",
-        }
+        formats: list[str] = ["pt"]
+        if try_onnx:
+            formats.append("onnx")
+        if try_torchscript:
+            formats.append("torchscript")
+
+        export_manifest = run_multi_format_export(
+            compressed_model,
+            output_dir,
+            formats=formats,
+            imgsz=imgsz,
+            device=device,
+            collapsed_fallback=collapsed_fallback,
+            quality_gate=quality_gate,
+        )
         if final_report_path and final_report_path.exists():
             shutil.copy2(final_report_path, output_dir / "export_report.md")
 
         manifest = {
             **base_manifest,
+            **export_manifest,
             "exported": True,
-            "export_path": str(export_pt),
-            "export_size_mb": round(model_size_mb(export_pt), 2),
-            "onnx": onnx_result,
+            "export_path": export_manifest["export_path"],
+            "export_size_mb": round(model_size_mb(Path(export_manifest["export_path"])), 2),
             "export_format": "ultralytics_pt",
-            "note": "Deployable candidate registered for downstream serving pipelines",
+            "note": export_manifest.get(
+                "note",
+                "Deployable candidate registered for downstream serving pipelines",
+            ),
         }
         manifest_name = "export_manifest.json"
     elif status == "accepted_for_research":
@@ -94,6 +84,7 @@ def run_export_if_accepted(
             **base_manifest,
             "exported": False,
             "export_path": None,
+            "structural": _has_structural_layers(compressed_model),
             "note": "Methodologically valid; retained for research only (param reduction below deploy threshold)",
         }
         manifest_name = "research_manifest.json"

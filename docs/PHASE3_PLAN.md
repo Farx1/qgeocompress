@@ -120,12 +120,40 @@ python scripts/evaluate_calibration.py --weights ... --compression structural-lo
 python scripts/make_phase3c_report.py
 ```
 
-### Phase 3D — Hardening (later)
+### Phase 3D — Export stack + project completion (done)
 
+Multi-format export CLI and collapsed structural fallback for Ultralytics-compatible serving.
+
+| Step | Task | Status |
+|------|------|--------|
+| 3D.1 | `export_core.py` — pt / ONNX / TorchScript orchestration | Done |
+| 3D.2 | `structural_collapse.py` — fold StructuralLowRankConv2d → Conv2d | Done |
+| 3D.3 | CLI `--format onnx\|torchscript\|pt\|all` + JSON manifest | Done |
+| 3D.4 | Valohai export step wired to multi-format | Done |
+| 3D.5 | `docs/PROJECT_PLAN.md` — end-to-end plan | Done |
+
+```bash
+python scripts/export_model.py \
+  --weights runs/compressed/structural_low_rank/.../model.pt \
+  --format all \
+  --device cpu \
+  --output-dir runs/export/candidate
+```
+
+**Export matrix:** see [`docs/PROJECT_PLAN.md`](PROJECT_PLAN.md).
+
+**Limitations:**
+
+- Direct ONNX/TorchScript on structural checkpoints: skipped (custom modules, no-fuse required).
+- Collapsed fallback: folds structural layers to standard Conv2d; loses param savings but enables Ultralytics export.
+- TensorRT: GPU-only; use `export_tensorrt.py` on CUDA host with `tensorrt` installed.
+
+### Phase 4 — Hardening & scale (future)
+
+- GPU FP16 / TensorRT export of collapsed structural model
 - Optional `k×1 + 1×k` variant for separable approx
-- GPU FP16 / TensorRT export of structural model
-- Partial layer replacement (wide layers first) if full replace hurts mAP
 - Custom fine-tune loop (if mAP gap vs SVD in-place is large)
+- Full DOTA scale + Valohai cloud DAG run
 
 ---
 
@@ -174,4 +202,5 @@ docs/PHASE3_PLAN.md                               # this file
 - [ ] Phase 3A eval r=0.84 on DOTA128
 - [x] Phase 3B hold-out validation (pareto-gain deployable)
 - [x] Phase 3C comparison report (`make_phase3c_report.py`)
-- [ ] Phase 3C GPU re-run (BN=20, latency proof)
+- [x] Phase 3D export stack (`export_model.py`, collapsed fallback, `PROJECT_PLAN.md`)
+- [ ] Phase 3C GPU re-run (BN=20, latency proof) — user-local, see GPU_RUNBOOK
