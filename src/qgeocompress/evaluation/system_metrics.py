@@ -67,7 +67,7 @@ def benchmark_inference(
     def _predict(batch: list[str]) -> None:
         kwargs: dict[str, Any] = {"imgsz": imgsz, "device": device, "verbose": False}
         if structural:
-            predict_no_fuse(model, batch, **kwargs)
+            predict_no_fuse(model, source=batch, **kwargs)
         else:
             model.predict(batch, **kwargs)
 

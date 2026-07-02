@@ -6,16 +6,7 @@ from typing import Any
 
 PENDING_ROWS: list[dict[str, str]] = [
     {
-        "method": "SVD in-place r=0.84 (hold-out test)",
-        "run_label": "holdout_low_rank_r084",
-        "status": "pending",
-        "reproduce": (
-            "python scripts/compress_model.py --method low-rank --rank-ratio 0.84 "
-            "--weights $BEST --eval-data-yaml $HOLDOUT/dota128_holdout_test.yaml"
-        ),
-    },
-    {
-        "method": "Structural top-5 pareto-gain BN=20 (GPU tonight)",
+        "method": "Structural top-5 pareto-gain BN=20 (GPU)",
         "run_label": "holdout_top5_pareto_bn20",
         "status": "pending",
         "reproduce": (
@@ -27,6 +18,12 @@ PENDING_ROWS: list[dict[str, str]] = [
             "--run-label holdout_top5_pareto_bn20 --device cuda"
         ),
     },
+    {
+        "method": "Latency benchmark CUDA (GPU)",
+        "run_label": "holdout_latency_cuda",
+        "status": "pending",
+        "reproduce": "See docs/GPU_RUNBOOK.md — benchmark_inference.py --device cuda",
+    },
 ]
 
 CANONICAL_CANDIDATES: list[dict[str, Any]] = [
@@ -35,6 +32,8 @@ CANONICAL_CANDIDATES: list[dict[str, Any]] = [
     {"method": "Structural top-5 sensitivity", "run_label": "holdout_top5_sens", "cal_suffix": "holdout_top5_sens_test"},
     {"method": "Structural top-3 pareto-gain", "run_label": "holdout_top3_pareto", "cal_suffix": "holdout_top3_pareto_test"},
     {"method": "Structural top-5 pareto-gain", "run_label": "holdout_top5_pareto", "cal_suffix": "holdout_top5_pareto_test"},
+    {"method": "Structural top-5 quantum-qaoa", "run_label": "holdout_top5_qaoa", "cal_suffix": "holdout_top5_qaoa_test"},
+    {"method": "SVD in-place r=0.84 (hold-out test)", "run_label": "holdout_low_rank_r084", "cal_suffix": "holdout_low_rank_r084_test"},
     {"method": "Structural top-8 pareto-gain", "run_label": "holdout_top8_pareto", "cal_suffix": "holdout_top8_pareto_test"},
     {"method": "Structural full r=0.84", "run_label": "holdout_full", "cal_suffix": "holdout_full_test"},
 ]
@@ -78,10 +77,28 @@ def _gate_status(gate: dict[str, Any] | None, compress: dict[str, Any] | None) -
     return "—"
 
 
+def _load_holdout_calibrations(summaries_dir: Path) -> list[dict[str, Any]]:
+    """Load calibration JSONs whose run_label or data_yaml references hold-out."""
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for path in sorted(summaries_dir.glob("calibration_*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        label = str(data.get("run_label") or "")
+        yaml_path = str(data.get("data_yaml") or "")
+        if "holdout" not in label and "holdout" not in yaml_path:
+            continue
+        run_id = str(data.get("run_id") or path.name)
+        if run_id in seen:
+            continue
+        seen.add(run_id)
+        rows.append(data)
+    return rows
+
+
 def build_phase3c_rows(summaries_dir: Path) -> list[dict[str, Any]]:
     compress_rows = _load_json_dir(summaries_dir, "structural-low-rank_*.json")
     compress_rows = [c for c in compress_rows if "holdout" in (c.get("run_label") or "")]
-    calibrations = _load_json_dir(summaries_dir, "calibration_*holdout*.json")
+    calibrations = _load_holdout_calibrations(summaries_dir)
     gates = _load_json_dir(summaries_dir, "reliability_gate_*holdout*.json")
     baseline_cals = [c for c in calibrations if c.get("compression") == "baseline"]
 
