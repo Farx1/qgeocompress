@@ -133,3 +133,30 @@ def test_select_layers_dispatch_quantum():
 
 def test_empty_probe_returns_empty():
     assert select_layers_by_qaoa([], max_layers=3, backend="classical") == []
+
+
+@skip_no_pl
+def test_qaoa_prefilters_beyond_simulator_limit(monkeypatch):
+    """28 candidates would need a 2**28-amplitude statevector (~4 GB)."""
+    seen = {}
+
+    def _fake_qaoa(q, n, **kwargs):
+        seen["n"] = n
+        return [1] * min(n, 5) + [0] * max(0, n - 5)
+
+    monkeypatch.setattr(qaoa_selection, "solve_qaoa", _fake_qaoa)
+    selected, meta = select_layers_by_qaoa(
+        _probe(28), max_layers=5, backend="qaoa", return_meta=True
+    )
+
+    assert seen["n"] == qaoa_selection._QAOA_QUBIT_LIMIT
+    assert meta["qaoa_prefiltered_from"] == 28
+    assert len(selected) <= 5
+    # Prefiltering keeps the highest parameter-gain candidates.
+    assert "model.27.conv" in selected
+
+
+def test_classical_backend_is_not_prefiltered():
+    _, meta = select_layers_by_qaoa(_probe(28), max_layers=5, backend="classical", return_meta=True)
+    assert meta["qaoa_prefiltered_from"] is None
+    assert meta["num_variables"] == 28
