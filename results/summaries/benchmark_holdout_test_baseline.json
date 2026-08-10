@@ -1,0 +1,17 @@
+{
+  "weights": "yolo11n-obb.pt",
+  "run_label": "holdout_test_baseline",
+  "benchmarks": [
+    {
+      "batch_size": 1,
+      "latency_ms_mean": 100.978,
+      "latency_ms_p50": 99.95,
+      "latency_ms_p95": 113.313,
+      "throughput_img_s": 9.9,
+      "vram_mb_max": 0.0,
+      "model_size_mb": 5.53,
+      "device": "cpu",
+      "structural_no_fuse": false
+    }
+  ]
+}
