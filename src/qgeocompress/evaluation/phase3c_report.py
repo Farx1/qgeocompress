@@ -28,15 +28,15 @@ PENDING_ROWS: list[dict[str, str]] = [
 
 CANONICAL_CANDIDATES: list[dict[str, Any]] = [
     {"method": "Baseline (hold-out test)", "run_label": "holdout_test_baseline", "kind": "baseline"},
-    {"method": "Structural top-3 sensitivity", "run_label": "holdout_top3_sens", "cal_suffix": "holdout_top3_sens_test"},
-    {"method": "Structural top-5 sensitivity", "run_label": "holdout_top5_sens", "cal_suffix": "holdout_top5_sens_test"},
-    {"method": "Structural top-3 pareto-gain", "run_label": "holdout_top3_pareto", "cal_suffix": "holdout_top3_pareto_test"},
-    {"method": "Structural top-5 pareto-gain", "run_label": "holdout_top5_pareto", "cal_suffix": "holdout_top5_pareto_test"},
-    {"method": "Structural top-5 quantum-qaoa (classical QUBO)", "run_label": "holdout_top5_qaoa", "cal_suffix": "holdout_top5_qaoa_test"},
-    {"method": "Structural top-5 quantum-qaoa (QAOA simulator)", "run_label": "holdout_top5_qaoa_sim", "cal_suffix": "holdout_top5_qaoa_sim_test"},
-    {"method": "SVD in-place r=0.84 (hold-out test)", "run_label": "holdout_low_rank_r084", "cal_suffix": "holdout_low_rank_r084_test"},
-    {"method": "Structural top-8 pareto-gain", "run_label": "holdout_top8_pareto", "cal_suffix": "holdout_top8_pareto_test"},
-    {"method": "Structural full r=0.84", "run_label": "holdout_full", "cal_suffix": "holdout_full_test"},
+    {"method": "Structural top-3 sensitivity", "run_label": "holdout_top3_sens"},
+    {"method": "Structural top-5 sensitivity", "run_label": "holdout_top5_sens"},
+    {"method": "Structural top-3 pareto-gain", "run_label": "holdout_top3_pareto"},
+    {"method": "Structural top-5 pareto-gain", "run_label": "holdout_top5_pareto"},
+    {"method": "Structural top-5 quantum-qaoa (classical QUBO)", "run_label": "holdout_top5_qaoa"},
+    {"method": "Structural top-5 quantum-qaoa (QAOA simulator)", "run_label": "holdout_top5_qaoa_sim"},
+    {"method": "SVD in-place r=0.84 (hold-out test)", "run_label": "holdout_low_rank_r084"},
+    {"method": "Structural top-8 pareto-gain", "run_label": "holdout_top8_pareto"},
+    {"method": "Structural full r=0.84", "run_label": "holdout_full"},
 ]
 
 
@@ -124,7 +124,8 @@ def build_phase3c_rows(summaries_dir: Path) -> list[dict[str, Any]]:
         if spec.get("kind") == "baseline":
             continue
         compress = _find_by_run_label(compress_rows, spec["run_label"])
-        cal = _find_cal(calibrations, spec["cal_suffix"]) if spec.get("cal_suffix") else None
+        # Calibration runs are labelled "<run_label>_test" by evaluate_calibration.py.
+        cal = None if spec.get("kind") == "baseline" else _find_cal(calibrations, f"{spec['run_label']}_test")
         gate = _find_gate(gates, cal.get("run_id") if cal else None)
 
         if compress is None and cal is None:

@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
-import cv2
-import numpy as np
 from ultralytics import YOLO
 from ultralytics.data.utils import check_det_dataset
 

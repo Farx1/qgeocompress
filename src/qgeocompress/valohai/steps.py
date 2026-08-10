@@ -8,9 +8,9 @@ from ultralytics import YOLO
 from qgeocompress.cli.compress_model import _evaluate_model, _map50_only
 from qgeocompress.cli.evaluate_calibration import evaluate_calibration
 from qgeocompress.compression import compress_model
+from qgeocompress.data.prepare_dota import resolve_data_yaml
 from qgeocompress.utils.config import make_run_id
 from qgeocompress.utils.device import resolve_device
-from qgeocompress.data.prepare_dota import resolve_data_yaml
 
 
 def run_baseline_eval(

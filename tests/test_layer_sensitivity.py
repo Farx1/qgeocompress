@@ -1,10 +1,11 @@
-import copy
+
+from unittest.mock import patch
 
 import pytest
 import torch
 import torch.nn as nn
-from unittest.mock import MagicMock, patch
 
+from qgeocompress.compression import layer_sensitivity
 from qgeocompress.compression.layer_sensitivity import (
     compute_compressibility_score,
     layer_param_gain_pct,
@@ -16,7 +17,6 @@ from qgeocompress.compression.layer_sensitivity import (
 from qgeocompress.compression.structural_low_rank import (
     StructuralLowRankConv2d,
     apply_structural_low_rank,
-    list_structural_candidates,
 )
 
 
@@ -69,11 +69,26 @@ def test_layer_param_gain_positive():
 
 def test_local_output_error_bounded():
     conv = nn.Conv2d(16, 16, 3, padding=1)
-    model = nn.Sequential(conv)
-    x = torch.randn(2, 16, 16, 16)
-    err = measure_local_output_error(model, "0", 1.0, [x])
-    assert err >= 0.0
-    assert err < 0.15
+    err = measure_local_output_error(conv, 1.0, [torch.randn(2, 16, 16, 16)])
+    assert err is not None
+    assert 0.0 <= err < 0.15
+
+
+def test_capture_layer_inputs_feeds_real_activations(tmp_path, monkeypatch):
+    """Deep convs must be scored on their own activations, not on the raw image."""
+    model = nn.Sequential(
+        nn.Conv2d(3, 8, 3, padding=1),
+        nn.Conv2d(8, 16, 3, padding=1),
+    )
+    monkeypatch.setattr(
+        layer_sensitivity, "_load_bchw_tensor", lambda *_a, **_k: torch.randn(1, 3, 32, 32)
+    )
+    captured = layer_sensitivity.capture_layer_inputs(model, ["0", "1"], ["fake.jpg"])
+
+    assert captured["0"][0].shape[1] == 3
+    assert captured["1"][0].shape[1] == 8  # would be 3 (and crash the conv) with raw images
+    err = measure_local_output_error(model[1], 0.5, captured["1"])
+    assert err is not None and err > 0.0
 
 
 def test_apply_structural_max_replaced_layers():
@@ -125,7 +140,6 @@ def test_apply_structural_sensitivity_selection():
 def test_probe_single_layer_json_fields():
     conv = nn.Conv2d(16, 32, 3, padding=1)
     row = probe_single_layer(
-        baseline_model=MagicMock(),
         layer_name="model.3.conv",
         conv=conv,
         rank_ratio=0.84,
@@ -179,7 +193,10 @@ def test_run_structural_probe_restores_between_layers(tmp_path):
 
 
 def test_sensitivity_report_json_roundtrip(tmp_path):
-    from qgeocompress.compression.layer_sensitivity import load_sensitivity_report, save_sensitivity_report
+    from qgeocompress.compression.layer_sensitivity import (
+        load_sensitivity_report,
+        save_sensitivity_report,
+    )
 
     report = {
         "method": "structural-probe",

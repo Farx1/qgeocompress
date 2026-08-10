@@ -1,8 +1,7 @@
+import random
+
 from qgeocompress.utils.config import load_dataset_config, load_experiment_config, make_run_id
 from qgeocompress.utils.seed import set_seed
-
-import random
-import numpy as np
 
 
 def test_config_loading():

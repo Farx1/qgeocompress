@@ -1,6 +1,7 @@
+from unittest.mock import patch
+
 import torch
 import torch.nn as nn
-from unittest.mock import patch
 
 from qgeocompress.compression import compress_model
 from qgeocompress.compression.structural_low_rank import (

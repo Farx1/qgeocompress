@@ -1,7 +1,7 @@
-import numpy as np
+from unittest.mock import patch
+
 import torch
 import torch.nn as nn
-from unittest.mock import patch
 
 from qgeocompress.compression import compress_model
 from qgeocompress.compression.low_rank import LowRankLinear, apply_low_rank

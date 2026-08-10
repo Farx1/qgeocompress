@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 from qgeocompress.evaluation.reliability_gate import GateThresholds, evaluate_reliability_gate

@@ -11,7 +11,7 @@ from ultralytics.data.utils import check_det_dataset
 from ultralytics.utils.metrics import batch_probiou
 from ultralytics.utils.ops import xyxyxyxy2xywhr
 
-from qgeocompress.data.prepare_dota import get_data_yaml, resolve_data_yaml
+from qgeocompress.data.prepare_dota import resolve_data_yaml
 
 IoUMode = Literal["obb", "axis_aligned"]
 

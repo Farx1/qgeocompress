@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 from qgeocompress.cli.make_calibration_report import (
