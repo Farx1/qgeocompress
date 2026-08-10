@@ -29,13 +29,17 @@ from ultralytics import YOLO
 
 from qgeocompress.compression.data_aware import (
     allocate_ranks_by_budget,
+    bn_output_scale,
+    calibrate_importance,
     collect_cross_grams,
     collect_patch_gram,
     data_aware_factors,
     drift_corrected_weight,
     layer_importance,
+    measured_marginals,
     param_count,
     rank_for_energy,
+    relative_error,
     transfer_importance,
 )
 from qgeocompress.compression.factorized import (
@@ -99,6 +103,7 @@ def build_variant(
     weights: str,
     ranks: dict[str, int],
     grams: dict[str, torch.Tensor] | None,
+    output_scaled: bool = False,
 ) -> tuple[YOLO, dict[str, Any]]:
     """Replace every named conv with a rank-r block, data-aware when grams given.
 
@@ -116,7 +121,8 @@ def build_variant(
         after = param_count(conv, rank)
         if after >= before:  # factorization would cost more than it saves
             continue
-        down, up = data_aware_factors(conv, rank, gram)
+        scale = bn_output_scale(model.model, name) if output_scaled else None
+        down, up = data_aware_factors(conv, rank, gram, output_scale=scale)
         _set_module(model.model, name, StructuralLowRankConv2d.from_factors(conv, down, up))
         saved += before - after
 
@@ -289,6 +295,68 @@ def _capture_many(
     return captured
 
 
+
+def refine_allocation(
+    weights: str,
+    convs: dict[str, nn.Conv2d],
+    grams: dict[str, torch.Tensor],
+    importance: dict[str, float],
+    target_saved: int,
+    probe_tensors: list[torch.Tensor],
+    rank_step: float = 0.15,
+    iterations: int = 2,
+) -> tuple[dict[str, int], dict[str, float]]:
+    """Alternate between allocating and correcting the surrogate it allocates on.
+
+    The Lagrangian minimizes a sum of per-layer errors measured in isolation.
+    Once every layer is factorized at once those errors no longer add up to the
+    network's error, and no amount of tuning the surrogate's inputs fixes a
+    surrogate evaluated on the wrong model. So: allocate, assemble, measure each
+    layer's true marginal by bumping its rank inside the assembled model, and
+    rescale that layer's weight by how far the surrogate was off. Two passes.
+    """
+    layers = {n: {"conv": c, "gram": grams[n]} for n, c in convs.items()}
+    allocation = allocate_ranks_by_budget(layers, target_saved, importance=importance)
+
+    for _ in range(iterations):
+        model, _ = build_variant(weights, allocation, grams)
+        reference = YOLO(weights, task="obb")
+        reference.model.eval()
+        with torch.no_grad():
+            targets = [_final_output(reference, x).clone() for x in probe_tensors]
+
+        bump: dict[str, tuple[nn.Module, int]] = {}
+        predicted: dict[str, float] = {}
+        for name, rank in allocation.items():
+            conv = convs[name]
+            top = max_useful_rank(conv)
+            higher = min(top, rank + max(1, int(top * rank_step)))
+            if higher <= rank:
+                continue
+            extra = param_count(conv, higher) - param_count(conv, rank)
+            if extra <= 0:
+                continue
+            down, up = data_aware_factors(conv, higher, grams[name])
+            bump[name] = (StructuralLowRankConv2d.from_factors(conv, down, up), extra)
+            drop = relative_error(conv, rank, grams[name]) - relative_error(conv, higher, grams[name])
+            predicted[name] = importance.get(name, 1.0) * max(drop, 0.0) / extra
+
+        marginals = measured_marginals(
+            model.model, targets, probe_tensors, bump, _final_output_module
+        )
+        importance = calibrate_importance(importance, marginals, predicted)
+        allocation = allocate_ranks_by_budget(layers, target_saved, importance=importance)
+
+    return allocation, importance
+
+
+def _final_output_module(module: nn.Module, x: torch.Tensor) -> torch.Tensor:
+    out = module(x)
+    while isinstance(out, (tuple, list)):
+        out = out[0]
+    return out
+
+
 def evaluate(
     model: YOLO, test_yaml: str, gt: dict, device: str, imgsz: int = 640
 ) -> tuple[dict[str, Any], dict[str, float]]:
@@ -311,6 +379,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--weights", default="yolo11n-obb.pt")
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--imgsz", type=int, default=640)
+    parser.add_argument("--refine", action="store_true",
+                        help="Also run the iterative surrogate calibration (measured: no gain).")
     parser.add_argument("--budgets", type=float, nargs="+", default=None,
                         help="Override the data-aware budget sweep (percent of model params).")
     parser.add_argument("--old-ratios", type=float, nargs="+", default=None,
@@ -325,7 +395,8 @@ def main(argv: list[str] | None = None) -> None:
                          "overwrite the pretrained statistics with a 24-image estimate and "
                          "cost 0.077 mAP50 even with no compression at all.")
     parser.add_argument("--resamples", type=int, default=400)
-    parser.add_argument("--preset", choices=["hypotheses", "frontier", "multi"], default="hypotheses",
+    parser.add_argument("--preset", choices=["hypotheses", "frontier", "multi", "refine"],
+                        default="hypotheses",
                         help="hypotheses: isolate H1-H6. frontier: fine sweep of the old method "
                              "against the winning one, for an equal-cost comparison.")
     parser.add_argument("--out", type=Path, default=None)
@@ -416,7 +487,12 @@ def main(argv: list[str] | None = None) -> None:
             elif arm.get("mode") == "sequential":
                 model, meta = build_variant_sequential(args.weights, arm["ranks"], probe_tensors)
             else:
-                model, meta = build_variant(args.weights, arm["ranks"], grams if arm["gram"] else None)
+                model, meta = build_variant(
+                    args.weights,
+                    arm["ranks"],
+                    grams if arm["gram"] else None,
+                    output_scaled=arm.get("output_scaled", False),
+                )
             recalibrate_batchnorm(
                 model,
                 data_yaml=train_yaml,
@@ -507,6 +583,29 @@ def main(argv: list[str] | None = None) -> None:
                     "mode": "multi-scheme",
                     "gram": False,
                 })
+        run_arms(arms)
+        return
+
+    if args.preset == "refine":
+        total_params = sum(p.numel() for p in baseline.model.parameters())
+        for pct in args.budgets or (16.0, 25.0, 32.0, 40.0):
+            target = int(total_params * pct / 100.0)
+            arms.append({
+                "name": f"surrogate budget {pct:.0f}%",
+                "ranks": budget_ranks(convs_all, pct, weighted="transfer"),
+                "gram": True,
+            })
+            arms.append({
+                "name": f"BN-scaled budget {pct:.0f}%",
+                "ranks": budget_ranks(convs_all, pct, weighted="transfer"),
+                "gram": True,
+                "output_scaled": True,
+            })
+            if args.refine:
+                refined, _ = refine_allocation(
+                    args.weights, convs_all, grams, importance, target, probe_tensors[:3]
+                )
+                arms.append({"name": f"refined budget {pct:.0f}%", "ranks": refined, "gram": True})
         run_arms(arms)
         return
 

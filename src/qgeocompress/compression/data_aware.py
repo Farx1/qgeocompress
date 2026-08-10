@@ -85,11 +85,32 @@ def factor_spectrum(
     return torch.linalg.svdvals(w2d @ _whitening_factor(gram))
 
 
+def bn_output_scale(model: nn.Module, conv_name: str) -> torch.Tensor | None:
+    """``gamma / sqrt(running_var + eps)`` of the BatchNorm following this conv.
+
+    Nothing reads a conv's output directly: in Ultralytics every conv is
+    immediately scaled by its BatchNorm, so an error of the same size in two
+    different output channels reaches the next layer scaled very differently.
+    Weighting the rows by that factor puts the truncation in the metric the
+    network actually sees.
+    """
+    parent_name = conv_name.rsplit(".", 1)[0] if "." in conv_name else ""
+    try:
+        parent = model.get_submodule(parent_name) if parent_name else model
+    except AttributeError:
+        return None
+    bn = getattr(parent, "bn", None)
+    if not isinstance(bn, nn.BatchNorm2d) or bn.weight is None:
+        return None
+    return (bn.weight.data / torch.sqrt(bn.running_var + bn.eps)).to(torch.float64)
+
+
 def data_aware_factors(
     conv: nn.Conv2d,
     rank: int,
     gram: torch.Tensor | None,
     weight: torch.Tensor | None = None,
+    output_scale: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Return ``(down_weight, up_weight)`` for a rank-``r`` factorization.
 
@@ -102,6 +123,13 @@ def data_aware_factors(
     c_out, c_in, kh, kw = source.shape
     w2d = source.reshape(c_out, -1).to(torch.float64)
     rank = max(1, min(rank, min(w2d.shape)))
+
+    # Two-sided metric: rows scaled by what BatchNorm will apply, columns
+    # whitened by what the data excites. Undone on the way out.
+    scale = None
+    if output_scale is not None:
+        scale = output_scale.reshape(-1, 1).clamp(min=1e-8)
+        w2d = scale * w2d
 
     if gram is None:
         u, s, vh = torch.linalg.svd(w2d, full_matrices=False)
@@ -116,6 +144,9 @@ def data_aware_factors(
             chol, (s[:rank, None] * vh[:rank]), upper=False, left=False
         )
         up = u[:, :rank]
+
+    if scale is not None:
+        up = up / scale
 
     return (
         down.reshape(rank, c_in, kh, kw).to(source.dtype),
@@ -316,3 +347,73 @@ def transfer_importance(
         own_error = max(1e-6, relative_error(conv, rank, gram))
         ratios[name] = reference_output_error.get(name, 0.0) / own_error
     return layer_importance(ratios, floor=floor)
+
+
+def measured_marginals(
+    model: nn.Module,
+    reference_outputs: list[torch.Tensor],
+    probe_inputs: list[torch.Tensor],
+    bump: dict[str, tuple[nn.Module, int]],
+    forward_output: Any,
+) -> dict[str, float]:
+    """Error removed per extra parameter, measured on the COMPOSED model.
+
+    The Lagrangian prices layers with their error measured in isolation, but a
+    layer's real cost depends on everything else that was compressed: the
+    surrogate and the objective disagree, and that disagreement is what caps the
+    frontier once 61 layers are factorized together.
+
+    Here each layer is bumped one rank step up *in the assembled model* and the
+    drop in end-to-end output error is measured. That is the true discrete
+    gradient of the objective the allocation is supposed to be minimizing.
+
+    ``bump`` maps layer name -> (replacement block, extra parameters).
+    """
+    def total_error() -> float:
+        num = den = 0.0
+        with torch.no_grad():
+            for x, ref in zip(probe_inputs, reference_outputs, strict=True):
+                out = forward_output(model, x)
+                num += float(((out - ref) ** 2).sum())
+                den += float((ref**2).sum())
+        return (num / den) ** 0.5 if den else 0.0
+
+    base_error = total_error()
+    marginals: dict[str, float] = {}
+
+    for name, (replacement, extra_params) in bump.items():
+        if extra_params <= 0:
+            continue
+        parent = model
+        *path, leaf = name.split(".")
+        for part in path:
+            parent = getattr(parent, part)
+        original = getattr(parent, leaf)
+        setattr(parent, leaf, replacement)
+        marginals[name] = max(0.0, base_error - total_error()) / extra_params
+        setattr(parent, leaf, original)
+
+    return marginals
+
+
+def calibrate_importance(
+    importance: dict[str, float],
+    measured: dict[str, float],
+    predicted: dict[str, float],
+    floor: float = 1e-3,
+    clip: float = 10.0,
+) -> dict[str, float]:
+    """Rescale each layer's weight by how wrong its surrogate marginal was.
+
+    A layer whose measured marginal exceeds what the curve predicted is being
+    under-protected, and vice versa. Multiplying the weight by the ratio makes
+    the next allocation agree with the composed model where it currently does
+    not, without discarding the curve's shape.
+    """
+    corrected: dict[str, float] = {}
+    for name, weight in importance.items():
+        ratio = measured.get(name, 0.0) / max(predicted.get(name, 0.0), 1e-12)
+        corrected[name] = weight * min(max(ratio, 1.0 / clip), clip)
+
+    scale = max(corrected.values()) if corrected else 1.0
+    return {name: max(floor, value / (scale or 1.0)) for name, value in corrected.items()}
