@@ -63,3 +63,6 @@ htmlcov/
 
 # Local tooling (not published)
 .gitnexus/
+
+# Ultralytics label caches (regenerated on every run)
+*.cache
