@@ -319,10 +319,23 @@ def recalibrate_batchnorm(
     dataset: str | None = None,
     imgsz: int = 640,
     device: str = "cpu",
-    num_batches: int = 20,
+    num_batches: int = 4,
     data_yaml: str | Path | None = None,
 ) -> int:
-    """Run train-mode forward passes to refresh BatchNorm running statistics."""
+    """Run train-mode forward passes to refresh BatchNorm running statistics.
+
+    ``num_batches`` defaults to 4, not 20. Each call is a single-image batch at
+    the module's own momentum (0.1 for Ultralytics), so after n batches the
+    pretrained statistics retain only ``0.9**n`` of their weight: 66% at n=4,
+    8% at n=24. Past a handful of images the layer is no longer being nudged, it
+    is being re-estimated from a tiny sample, and that is pure noise.
+
+    Measured on the UNCOMPRESSED baseline, where a recalibration should be a
+    no-op: n=4 costs +0.0005 mAP50, n=24 costs -0.077. Resetting the statistics
+    first and averaging exactly over 24 images is worse still (-0.22): whatever
+    the pretrained model learned about activation statistics beats anything a
+    24-image split can measure.
+    """
     images = [str(p) for _, p in list_val_images(dataset=dataset, data_yaml=data_yaml)[:num_batches]]
     if not images:
         return 0

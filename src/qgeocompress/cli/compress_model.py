@@ -336,7 +336,8 @@ def main(argv: list[str] | None = None) -> None:
         type=int,
         default=None,
         help="Forward batches for BN recalibration after structural replacement "
-             "(default: 20 for structural-low-rank, 0 otherwise)",
+             "(default: 4 for structural-low-rank, 0 otherwise). Values past a handful "
+             "overwrite the pretrained statistics with a tiny-sample estimate.",
     )
     parser.add_argument(
         "--probe-max-layers",
@@ -351,7 +352,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.bn_recalibration_batches is None:
-        args.bn_recalibration_batches = 20 if args.method == "structural-low-rank" else 0
+        args.bn_recalibration_batches = 4 if args.method == "structural-low-rank" else 0
 
     logger = setup_logging()
     device = resolve_device(args.device)

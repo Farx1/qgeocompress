@@ -315,7 +315,10 @@ def main(argv: list[str] | None = None) -> None:
                         help="Probe images for the drift-corrected pass. Deep layers see only "
                              "~400 patch positions per image against d up to 2304, so too few "
                              "images make the refit underdetermined and it loses to the parallel pass.")
-    parser.add_argument("--bn-batches", type=int, default=24)
+    parser.add_argument("--bn-batches", type=int, default=4,
+                    help="Kept small on purpose: see recalibrate_batchnorm. Large values "
+                         "overwrite the pretrained statistics with a 24-image estimate and "
+                         "cost 0.077 mAP50 even with no compression at all.")
     parser.add_argument("--resamples", type=int, default=400)
     parser.add_argument("--preset", choices=["hypotheses", "frontier", "multi"], default="hypotheses",
                         help="hypotheses: isolate H1-H6. frontier: fine sweep of the old method "

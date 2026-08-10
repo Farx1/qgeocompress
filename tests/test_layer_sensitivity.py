@@ -206,3 +206,18 @@ def test_sensitivity_report_json_roundtrip(tmp_path):
     loaded = load_sensitivity_report(path)
     assert loaded["layers"][0]["layer_name"] == "model.0.conv"
     assert "compressibility_score" in loaded["layers"][0]
+
+
+def test_batchnorm_recalibration_defaults_to_a_light_touch():
+    """Each batch decays the pretrained statistics by (1 - momentum).
+
+    Regression: the old default of 20-24 single-image batches left the
+    pretrained running statistics 8% of their weight and cost 0.077 mAP50 on a
+    model with no compression applied at all.
+    """
+    import inspect
+
+    default = inspect.signature(layer_sensitivity.recalibrate_batchnorm).parameters["num_batches"]
+    assert default.default <= 8
+    # Retained weight of the pretrained statistics at the default, momentum 0.1.
+    assert (1 - 0.1) ** default.default > 0.5
