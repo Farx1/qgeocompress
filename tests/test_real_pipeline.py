@@ -118,3 +118,26 @@ def test_bn_recalibration_updates_running_stats(model, data_yaml):
 
     assert ran == 4
     assert not bn.running_mean.equal(before)
+
+
+def test_gt_matching_finds_true_positives(model, data_yaml):
+    """Regression: predictions were keyed "image0", "image1", ... for a list
+    source, so they never met their ground truth and CER@0.8 was always 1.0."""
+    from qgeocompress.evaluation.calibration_real import compute_calibration_metrics
+    from qgeocompress.evaluation.gt_matching import (
+        load_ground_truth_for_dataset,
+        match_dataset_predictions,
+        run_yolo_predictions,
+    )
+
+    gt = load_ground_truth_for_dataset(data_yaml=data_yaml)
+    preds = run_yolo_predictions(model, data_yaml=data_yaml, imgsz=640, device="cpu")
+
+    assert set(preds) == set(gt), "prediction keys must be the image ids used for ground truth"
+
+    summary = match_dataset_predictions(preds, gt, iou_threshold=0.5)
+    assert summary.num_tp > 0.9 * summary.num_gt, "a pretrained model should match most GT boxes"
+
+    metrics = compute_calibration_metrics(summary)
+    assert metrics["confident_error_rate_08"] < 0.1
+    assert metrics["ece"] < 0.2
