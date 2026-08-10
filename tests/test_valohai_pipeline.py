@@ -1,7 +1,5 @@
-from pathlib import Path
 
 from qgeocompress.valohai.gate_report import (
-    build_gate_reasons,
     evaluate_quality_gate,
     render_final_report,
     valohai_gate_status,

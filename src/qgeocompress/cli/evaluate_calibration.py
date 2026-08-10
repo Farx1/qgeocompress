@@ -6,6 +6,7 @@ from typing import Any
 
 from ultralytics import YOLO
 
+from qgeocompress.data.prepare_dota import resolve_data_yaml
 from qgeocompress.evaluation.calibration_real import (
     compute_calibration_metrics,
     plot_coverage_risk_curve,
@@ -20,7 +21,6 @@ from qgeocompress.models.load_model import extract_detection_metrics
 from qgeocompress.utils.config import make_run_id, project_root, save_json
 from qgeocompress.utils.device import resolve_device
 from qgeocompress.utils.logging import setup_logging
-from qgeocompress.data.prepare_dota import resolve_data_yaml
 from qgeocompress.utils.paths import resolve_baseline_weights
 
 

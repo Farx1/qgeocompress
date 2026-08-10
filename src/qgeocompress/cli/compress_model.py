@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -9,16 +8,16 @@ from ultralytics import YOLO
 
 from qgeocompress.compression import compress_model
 from qgeocompress.compression.finetune import (
-    FinetuneConfig,
     FINETUNE_BACKEND,
     RELOAD_DROP_ABS_THRESHOLD,
     RELOAD_DROP_REL_THRESHOLD,
     UNSUPPORTED_TRAIN_API_REASON,
+    FinetuneConfig,
     compute_reload_drop,
     load_baseline_map50,
     reload_is_unstable,
 )
-from qgeocompress.data.prepare_dota import get_data_yaml, resolve_data_yaml
+from qgeocompress.data.prepare_dota import resolve_data_yaml
 from qgeocompress.evaluation.system_metrics import benchmark_inference
 from qgeocompress.models.load_model import extract_detection_metrics, model_size_mb
 from qgeocompress.utils.config import load_model_config, make_run_id, project_root, save_json
@@ -336,7 +335,8 @@ def main(argv: list[str] | None = None) -> None:
         "--bn-recalibration-batches",
         type=int,
         default=None,
-        help="Forward batches for BN recalibration after structural replacement (default: 20 for structural-low-rank, 0 otherwise)",
+        help="Forward batches for BN recalibration after structural replacement "
+             "(default: 20 for structural-low-rank, 0 otherwise)",
     )
     parser.add_argument(
         "--probe-max-layers",

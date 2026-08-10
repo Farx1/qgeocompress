@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-from qgeocompress.valohai.steps import run_baseline_eval
 from qgeocompress.valohai.io import log_metric, write_json
+from qgeocompress.valohai.steps import run_baseline_eval
 
 
 def main() -> None:

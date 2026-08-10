@@ -1,9 +1,10 @@
-import pytest
 from pathlib import Path
+
+import pytest
+from ultralytics.data.utils import check_det_dataset
 
 from qgeocompress.cli.create_dota128_holdout import create_dota128_holdout
 from qgeocompress.data.prepare_dota import resolve_data_yaml
-from ultralytics.data.utils import check_det_dataset
 
 
 @pytest.fixture

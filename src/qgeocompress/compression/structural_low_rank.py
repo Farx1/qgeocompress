@@ -82,12 +82,8 @@ class StructuralLowRankConv2d(nn.Module):
 
 
 def _rank_for_conv(conv: nn.Conv2d, rank_ratio: float) -> int:
-    c_out, c_in = conv.out_channels, conv.in_channels
-    k = conv.kernel_size[0]
-    flat = c_out * c_in * k * k
-    w2d = conv.weight.data.reshape(c_out, -1)
-    max_rank = min(w2d.shape[0], w2d.shape[1])
-    return max(1, int(max_rank * rank_ratio))
+    w2d = conv.weight.data.reshape(conv.out_channels, -1)
+    return max(1, int(min(w2d.shape) * rank_ratio))
 
 
 def _set_module(root: nn.Module, dotted_name: str, module: nn.Module) -> None:

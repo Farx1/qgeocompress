@@ -3,31 +3,20 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import numpy as np
-
 from ultralytics import YOLO
 
-from qgeocompress.calibration.ece import confident_error_rate, expected_calibration_error
-from qgeocompress.data.prepare_dota import get_data_yaml, resolve_data_yaml
+from qgeocompress.data.prepare_dota import resolve_data_yaml
 from qgeocompress.evaluation.system_metrics import benchmark_inference
 from qgeocompress.models.load_model import extract_detection_metrics, model_size_mb
-from qgeocompress.utils.config import load_dataset_config, load_model_config, make_run_id, project_root, save_json
+from qgeocompress.utils.config import (
+    load_model_config,
+    make_run_id,
+    project_root,
+    save_json,
+)
 from qgeocompress.utils.device import resolve_device
 from qgeocompress.utils.logging import setup_logging
 from qgeocompress.utils.seed import set_seed
-
-
-def _collect_calibration_arrays(results) -> tuple[list[float], list[int]]:
-    confidences: list[float] = []
-    correct: list[int] = []
-    for r in results:
-        if r.boxes is None or len(r.boxes) == 0:
-            continue
-        confs = r.boxes.conf.cpu().numpy()
-        # Proxy: high confidence treated as correct for pipeline smoke test
-        confidences.extend(confs.tolist())
-        correct.extend([1] * len(confs))
-    return confidences, correct
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -48,7 +37,6 @@ def main(argv: list[str] | None = None) -> None:
     set_seed(args.seed)
     device = resolve_device(args.device)
 
-    ds_cfg = load_dataset_config(args.dataset)
     model_cfg = load_model_config(args.model)
     data_yaml = resolve_data_yaml(dataset=args.dataset, data_yaml=args.data_yaml)
     weights = model_cfg.get("weights", "yolo11n-obb.pt")
@@ -77,12 +65,6 @@ def main(argv: list[str] | None = None) -> None:
     bench = benchmark_inference(best_weights, dataset=args.dataset, batch_sizes=[1, 4], imgsz=args.imgsz, device=device)
     bench_primary = bench[0] if bench else {}
 
-    preds = model.predict(source=_val_sample(data_yaml), imgsz=args.imgsz, device=device, verbose=False)
-    confs, correct = _collect_calibration_arrays(preds)
-
-    ece = expected_calibration_error(np.array(confs), np.array(correct)) if confs else 0.0
-    cer = confident_error_rate(np.array(confs), np.array(correct)) if confs else 0.0
-
     run_config = {
         "dataset": args.dataset,
         "data_yaml": data_yaml,
@@ -100,8 +82,8 @@ def main(argv: list[str] | None = None) -> None:
         **det_metrics,
         **bench_primary,
         "model_size_mb": round(model_size_mb(best_weights), 2),
-        "ece": round(ece, 4),
-        "confident_error_rate": round(cer, 4),
+        # Calibration is GT-matched and lives in scripts/evaluate_calibration.py.
+        # Training emits no ECE/CER: without GT matching any value here would be fiction.
         "weights": str(best_weights),
         "save_dir": str(train_results.save_dir),
     }
@@ -111,19 +93,6 @@ def main(argv: list[str] | None = None) -> None:
     logger.info("Baseline complete — mAP50=%.4f, saved to %s", summary.get("map50", 0), out)
 
 
-def _val_sample(data_yaml: str, n: int = 8) -> str | list[str]:
-    from ultralytics.data.utils import check_det_dataset
-
-    info = check_det_dataset(data_yaml)
-    val = info.get("val") or info.get("train")
-    if not val:
-        return data_yaml
-    p = Path(val)
-    exts = {".jpg", ".jpeg", ".png", ".tif"}
-    if p.is_dir():
-        imgs = [str(f) for f in sorted(p.iterdir()) if f.suffix.lower() in exts][:n]
-        return imgs or str(p)
-    return str(p)
 
 
 if __name__ == "__main__":

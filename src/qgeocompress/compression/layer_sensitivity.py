@@ -15,7 +15,6 @@ from qgeocompress.compression.structural_low_rank import (
     _set_module,
     list_structural_candidates,
 )
-from qgeocompress.data.prepare_dota import get_data_yaml
 from qgeocompress.evaluation.gt_matching import list_val_images
 from qgeocompress.utils.config import project_root, save_json
 
@@ -40,59 +39,64 @@ def compute_compressibility_score(
 
 
 def measure_local_output_error(
-    baseline_model: nn.Module,
-    layer_name: str,
+    module: nn.Conv2d,
     rank_ratio: float,
-    sample_inputs: list[torch.Tensor],
-) -> float:
-    """Relative ||orig_out - factored_out|| / ||orig_out|| averaged over sample inputs."""
-    module = baseline_model.get_submodule(layer_name)
-    if not isinstance(module, nn.Conv2d):
-        return 0.0
+    layer_inputs: list[torch.Tensor],
+) -> float | None:
+    """Relative ||orig_out - factored_out|| / ||orig_out|| averaged over real layer inputs.
+
+    ``layer_inputs`` must be the tensors this conv actually receives during a
+    forward pass (see :func:`capture_layer_inputs`), not raw images.
+    """
+    if not isinstance(module, nn.Conv2d) or not layer_inputs:
+        return None
 
     factored = StructuralLowRankConv2d(module, _rank_for_conv(module, rank_ratio))
     errors: list[float] = []
 
-    for x in sample_inputs:
-        with torch.no_grad():
+    with torch.no_grad():
+        for x in layer_inputs:
             orig = module(x)
-            approx = factored(x)
             denom = orig.norm().item()
             if denom < 1e-9:
                 continue
-            rel = (orig - approx).norm().item() / denom
-            errors.append(rel)
+            errors.append((orig - factored(x)).norm().item() / denom)
 
     if not errors:
-        return 0.0
+        return None
     return round(float(sum(errors) / len(errors)), 6)
 
 
-def _collect_probe_inputs(
-    model: YOLO,
-    dataset: str | None,
-    imgsz: int,
-    device: str,
-    max_batches: int = 4,
-    data_yaml: str | Path | None = None,
-) -> list[torch.Tensor]:
-    """Capture intermediate-ready tensors by running the first backbone conv."""
-    images = [str(p) for _, p in list_val_images(dataset=dataset, data_yaml=data_yaml)[:max_batches]]
-    if not images:
-        return []
+def capture_layer_inputs(
+    pytorch_model: nn.Module,
+    layer_names: list[str],
+    image_paths: list[str],
+    imgsz: int = 640,
+    device: str = "cpu",
+) -> dict[str, list[torch.Tensor]]:
+    """Record the real input tensor every candidate conv sees, one forward per image."""
+    captured: dict[str, list[torch.Tensor]] = {name: [] for name in layer_names}
 
-    tensors: list[torch.Tensor] = []
-    model.model.eval()
-    for path in images:
-        results = model.predict(path, imgsz=imgsz, device=device, verbose=False)
-        if not results:
-            continue
-        im = results[0].orig_img
-        if im is None:
-            continue
-        t = torch.from_numpy(im).permute(2, 0, 1).unsqueeze(0).float() / 255.0
-        tensors.append(t.to(device))
-    return tensors
+    def _hook(name: str):
+        def fn(_module: nn.Module, args: tuple[Any, ...]) -> None:
+            if args:
+                captured[name].append(args[0].detach())
+
+        return fn
+
+    handles = [
+        pytorch_model.get_submodule(name).register_forward_pre_hook(_hook(name))
+        for name in layer_names
+    ]
+    try:
+        pytorch_model.eval()
+        with torch.no_grad():
+            for path in image_paths:
+                pytorch_model(_load_bchw_tensor(path, imgsz, device))
+    finally:
+        for handle in handles:
+            handle.remove()
+    return captured
 
 
 def _replace_single_layer(
@@ -111,7 +115,6 @@ def _replace_single_layer(
 
 
 def probe_single_layer(
-    baseline_model: YOLO,
     layer_name: str,
     conv: nn.Conv2d,
     rank_ratio: float,
@@ -224,20 +227,21 @@ def run_structural_probe(
     if max_probe_layers is not None:
         candidates = candidates[:max_probe_layers]
 
-    sample_inputs = _collect_probe_inputs(
-        baseline, dataset, imgsz, device, activation_batches, data_yaml=data_yaml
+    probe_images = [
+        str(p)
+        for _, p in list_val_images(dataset=dataset, data_yaml=data_yaml)[:activation_batches]
+    ]
+    captured = (
+        capture_layer_inputs(
+            baseline.model, [name for name, _ in candidates], probe_images, imgsz, device
+        )
+        if probe_images
+        else {}
     )
     layer_results: list[dict[str, Any]] = []
 
     for layer_name, conv in candidates:
-        local_err = None
-        if sample_inputs:
-            try:
-                local_err = measure_local_output_error(
-                    baseline.model, layer_name, rank_ratio, sample_inputs
-                )
-            except Exception:
-                local_err = None
+        local_err = measure_local_output_error(conv, rank_ratio, captured.get(layer_name, []))
 
         original_module = baseline.model.get_submodule(layer_name)
         saved_module = copy.deepcopy(original_module)
@@ -249,9 +253,9 @@ def run_structural_probe(
 
         _restore_single_layer(baseline.model, layer_name, saved_module)
 
+        captured.pop(layer_name, None)  # free activations as soon as the layer is scored
         layer_results.append(
             probe_single_layer(
-                baseline,
                 layer_name,
                 conv,
                 rank_ratio,

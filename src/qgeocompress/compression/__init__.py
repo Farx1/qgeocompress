@@ -12,7 +12,7 @@ from qgeocompress.compression.layer_sensitivity import (
     run_structural_probe,
     save_sensitivity_report,
 )
-from qgeocompress.compression.low_rank import apply_low_rank, count_params
+from qgeocompress.compression.low_rank import apply_low_rank
 from qgeocompress.compression.pruning import magnitude_prune
 from qgeocompress.compression.quantization import compression_stats
 from qgeocompress.compression.structural_low_rank import apply_structural_low_rank
@@ -44,7 +44,6 @@ def compress_model(
         meta = _base_meta(method, weights)
         rank_ratio = float(kwargs.get("rank_ratio", 0.84))
         target_layers = kwargs.get("target_layers", ["backbone", "neck"])
-        dataset = kwargs.get("dataset", "dota128")
         imgsz = int(kwargs.get("imgsz", 640))
         device = kwargs.get("device", "cpu")
         eval_map50_fn = kwargs.get("eval_map50_fn")
