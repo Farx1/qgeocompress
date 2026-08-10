@@ -40,6 +40,18 @@ CANONICAL_CANDIDATES: list[dict[str, Any]] = [
 ]
 
 
+def _baseline_latency(summaries_dir: Path) -> float | None:
+    """Batch-1 latency from benchmark_inference.py --run-label holdout_test_baseline."""
+    path = summaries_dir / "benchmark_holdout_test_baseline.json"
+    if not path.exists():
+        return None
+    benchmarks = json.loads(path.read_text(encoding="utf-8")).get("benchmarks") or []
+    for entry in benchmarks:
+        if entry.get("batch_size") == 1:
+            return entry.get("latency_ms_mean")
+    return benchmarks[0].get("latency_ms_mean") if benchmarks else None
+
+
 def _load_json_dir(summaries_dir: Path, pattern: str) -> list[dict[str, Any]]:
     return [json.loads(p.read_text(encoding="utf-8")) for p in sorted(summaries_dir.glob(pattern))]
 
@@ -116,7 +128,7 @@ def build_phase3c_rows(summaries_dir: Path) -> list[dict[str, Any]]:
             "param_reduction_pct": 0.0,
             "bn_batches": None,
             "gate_status": "reference",
-            "latency_ms_mean": None,
+            "latency_ms_mean": _baseline_latency(summaries_dir),
             "status": "ok",
         })
 
@@ -192,8 +204,9 @@ def render_phase3c_markdown(rows: list[dict[str, Any]]) -> str:
         "",
         "## Notes",
         "",
-        "- Pareto-gain runs with `bn_batches=0` predate CLI default fix (now 20 for structural-low-rank).",
-        "- Re-run top-5 pareto with BN=20: see `docs/GPU_RUNBOOK.md`.",
+        "- Latency is single-run CPU wall time on a shared host. Two arms that select the "
+        "identical layer set (top-5 sensitivity and top-5 quantum-qaoa/classical) differ by "
+        "~17%, so treat that as the noise floor and compare only against the baseline row.",
         "- Gate statuses: `deployable_compression_candidate`, `methodologically_valid`, `rejected`.",
     ])
     return "\n".join(lines) + "\n"

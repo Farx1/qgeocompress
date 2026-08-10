@@ -1,10 +1,10 @@
 {
-  "run_id": "structural-low-rank_50885697",
+  "run_id": "structural-low-rank_47a302b3",
   "dataset": "dota128",
   "data_yaml": null,
   "eval_data_yaml": "datasets/dota128_holdout/dota128_holdout_test.yaml",
   "bn_data_yaml": "datasets/dota128_holdout/dota128_holdout_train.yaml",
-  "run_label": "h2h_top5_qaoa",
+  "run_label": "holdout_top5_qaoa",
   "model": "yolo_obb_small",
   "compression": "structural-low-rank",
   "rank_ratio": 0.84,
@@ -18,10 +18,10 @@
   "precision": 0.7465408185383521,
   "recall": 0.867829437517017,
   "batch_size": 1,
-  "latency_ms_mean": 87.27,
-  "latency_ms_p50": 84.748,
-  "latency_ms_p95": 100.303,
-  "throughput_img_s": 11.46,
+  "latency_ms_mean": 99.609,
+  "latency_ms_p50": 98.43,
+  "latency_ms_p95": 109.053,
+  "throughput_img_s": 10.04,
   "vram_mb_max": 0.0,
   "model_size_mb": 5.3,
   "device": "cpu",
@@ -31,7 +31,7 @@
   "status": "ok",
   "ultralytics_compatible": true,
   "output_format": "ultralytics_pt",
-  "output_weights": "runs/compressed/structural_low_rank/structural_low_rank_r0.840_h2h_top5_qaoa.pt",
+  "output_weights": "runs/compressed/structural_low_rank/structural_low_rank_r0.840_holdout_top5_qaoa.pt",
   "reason": null,
   "compression_mode": "structural_factorization",
   "target_scope": "backbone-neck",
@@ -66,5 +66,5 @@
   "bn_recalibration_batches_ran": 20,
   "num_parameters": 2530048,
   "param_memory_mb": 9.651,
-  "file_size_mb": 5.296
+  "file_size_mb": 5.298
 }
