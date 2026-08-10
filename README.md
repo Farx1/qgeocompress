@@ -137,10 +137,11 @@ Four hypotheses, each isolated on the same split
 | ---------- | ------- | -------- |
 | **Rank ratio was the binding constraint** | Confirmed | At r=0.84 the factorization saves `1 − r/c_out − r/(c_in·k²)` per layer, so compressing *all 28* candidates caps at **7.34%** of the model. The shipped −5.6% was near that ceiling, not near a selection optimum. |
 | **1×1 convs must be included** | Confirmed | They hold **39.4%** of the weights and were excluded by `kernel_size != (3,3)`. Candidate coverage went 41.1% → 80.5%. |
-| **Data-aware SVD beats plain SVD** | Confirmed, large | Minimizing `‖(W−Ŵ)X‖` instead of `‖W−Ŵ‖_F`: **33–48% lower output error at identical rank**; at −17.6% params, mAP50 0.554 vs 0.320. |
-| **Budget allocation beats a global ratio** | Confirmed | Lagrangian allocation over per-layer spectra, weighted by measured end-to-end sensitivity: **+0.053 mAP50** over unweighted at a −33% budget. |
-| **Drift-corrected sequential refit** | Partial | +0.20 mAP50 at a fixed rank ratio, but no gain once budget allocation is in play. Needs ≥16 probe images: deep layers see ~400 patch positions each against `d` up to 2304. |
-| **Energy-threshold ranks (τ)** | Rejected | τ=0.95 gives −44.7% params at mAP50 0.057. The criterion ignores how much each layer matters downstream. |
+| **Data-aware SVD beats plain SVD** | Confirmed, large | Minimizing `‖(W−Ŵ)X‖` instead of `‖W−Ŵ‖_F`: **33–48% lower output error at identical rank**; at −17.6% params, mAP50 **0.554 vs 0.320**. |
+| **Budget allocation beats a global ratio** | Confirmed, large | Lagrangian allocation over per-layer spectra: at −16.9% params it scores 0.783 where a uniform ratio at −17.6% scores 0.320. |
+| **Sensitivity weighting on top of the budget** | Confirmed, small | +0.009 mAP50 at ~−17% and +0.013 at ~−32%, while also allocating slightly more compression. Real but near the noise floor. |
+| **Drift-corrected sequential refit** | Partial | At a fixed ratio r=0.5 (−17.6% params): plain 0.320 → data-aware 0.554 → sequential **0.755**. But combined with budget allocation it *loses* (0.675 vs 0.717 at −32.6%), so it is not in the recommended path. Needs ≥16 probe images: deep layers see ~400 patch positions each against `d` up to 2304, and at 3 images the refit is underdetermined. |
+| **Energy-threshold ranks (τ)** | Rejected | τ=0.95 gives −44.7% params at mAP50 **0.057**. A per-layer energy threshold ignores both the parameter cost of a rank and how much the layer matters downstream. |
 | **Feature distillation recovery** | Rejected here | Label-free distillation from the uncompressed teacher moved mAP50 by +0.019 / −0.066 / +0.044 across three budgets — inside the noise. Implemented and documented in `compression/distillation.py`, not part of the recommended path. |
 
 ### Experimental / incomplete
