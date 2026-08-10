@@ -20,18 +20,25 @@ A post-training optimization stack for **YOLO11n-OBB** on **DOTA** aerial detect
 
 | Area | Status | Notes |
 | ---- | ------ | ----- |
-| **Core library** | Stable enough to run | ~116 pytest tests; CI on push/PR |
+| **Core library** | Stable enough to run | 119 unit tests + 5 real-model tests; lint + both suites in CI |
 | **Phase 2 (low-rank + calibration)** | Done | Rank frontier + GT-matched ECE/CER |
 | **Phase 3B (structural selective)** | Validated on hold-out | Pareto-gain ~5–6% params, mAP preserved |
 | **Quantum selection (QAOA)** | Implemented | QUBO + QAOA on simulator; classical exact reference |
+| **Head-to-head comparison** | Done on DOTA128 | 7 arms, one command, latency filled — see below |
 | **Valohai DAG** | MVP implemented | Not yet battle-tested on Valohai cloud |
 | **ONNX / TensorRT export** | Multi-format CLI | Baseline ONNX/TS; structural via collapsed fallback or `.pt` no-fuse |
 | **Full DOTA scale** | Not started | MVP runs on DOTA128 (128 images) |
 | **Production deployment** | Out of scope (for now) | Research → MLOps brick, not a shipped product |
 
-**Latest validated result (Phase 3B hold-out, test split):** pareto-gain top-5 → mAP50 **0.933**, CER@0.8 **0.005**, **−5.63%** params vs baseline. Naive full structural replacement still **rejected** (mAP50 ≈ 0.27).
+**Latest validated result (hold-out test split, regenerated end to end):** pareto-gain top-5 → mAP50 **0.909**, CER@0.8 **0.0050**, **−5.63%** params, gate `deployable`. Every compressed arm is also **faster than baseline on CPU** (85–99.6 ms vs 101.0 ms at batch 1).
 
-Reports: [`results/reports/qgeocompress_phase3b_holdout.md`](results/reports/qgeocompress_phase3b_holdout.md) · [`results/reports/qgeocompress_phase3b_summary.md`](results/reports/qgeocompress_phase3b_summary.md) · [`results/reports/qgeocompress_phase3c_comparison.md`](results/reports/qgeocompress_phase3c_comparison.md) · Plan: [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) · Phase 3: [`docs/PHASE3_PLAN.md`](docs/PHASE3_PLAN.md) · GPU: [`docs/GPU_RUNBOOK.md`](docs/GPU_RUNBOOK.md)
+Reproduce the whole table in ~25 minutes on CPU:
+
+```bash
+./scripts/run_headtohead.sh
+```
+
+Reports: [`results/reports/qgeocompress_phase3c_comparison.md`](results/reports/qgeocompress_phase3c_comparison.md) · [`results/reports/qgeocompress_phase3b_holdout.md`](results/reports/qgeocompress_phase3b_holdout.md) · [`results/reports/qgeocompress_phase3b_summary.md`](results/reports/qgeocompress_phase3b_summary.md) · Plan: [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) · Phase 3: [`docs/PHASE3_PLAN.md`](docs/PHASE3_PLAN.md) · GPU: [`docs/GPU_RUNBOOK.md`](docs/GPU_RUNBOOK.md)
 
 ---
 
@@ -69,7 +76,8 @@ Phase 3B' Hold-out validation (80/24/24)               [done]
 Phase 3B'' Pareto-gain layer selection                 [done — deployable gate on hold-out]
 Phase Q   Quantum QAOA layer selection (QUBO)          [done — simulator + classical ref]
 Phase 4   Valohai DAG + export path                     [done — MVP + multi-format]
-Phase 5   Scale (full DOTA), latency proof, TensorRT    [planned — user GPU]
+Phase 3C  Head-to-head, all strategies + CPU latency   [done — one command]
+Phase 5   Scale (full DOTA), GPU latency, TensorRT      [planned — user GPU]
 ```
 
 ---
@@ -84,7 +92,7 @@ Phase 5   Scale (full DOTA), latency proof, TensorRT    [planned — user GPU]
 | **Metrics** | GT-matched calibration, ECE, CER@0.8, selective prediction |
 | **Quantum** | PennyLane (QAOA on `default.qubit` simulator) |
 | **MLOps** | Valohai (`valohai.yaml`), Docker |
-| **Quality** | pytest (~116 tests), ruff, GitHub Actions CI |
+| **Quality** | pytest (119 unit + 5 real-model), ruff (enforced in CI), GitHub Actions CI |
 
 ---
 
@@ -103,15 +111,16 @@ Phase 5   Scale (full DOTA), latency proof, TensorRT    [planned — user GPU]
 - **Phase 3C report** — `scripts/make_phase3c_report.py` joins calibration + compression + gate JSONs
 - **Export tooling** — `scripts/export_model.py` (`--format onnx|torchscript|pt|all`, collapsed structural fallback, JSON manifest)
 - **Local E2E pipeline** — `scripts/run_holdout_pipeline.sh` (`--skip-train`, `--skip-probe`, `--gpu`, `--dry-run`)
-- **CI** — GitHub Actions `pytest -q` on Python 3.11
+- **CI** — GitHub Actions runs `ruff check`, the mocked suite and the real-model suite on Python 3.11
+- **Activation-aware probe** — `local_output_error` measured per layer via forward pre-hooks (28/28 candidates on the current probe)
+- **Head-to-head runner** — `scripts/run_headtohead.sh` regenerates every arm and the Phase 3C table from scratch
 
 ### Experimental / incomplete
 
 - **Structural inference** — requires `no-fuse` path (`obb_validate.py`, `system_metrics.py`); use collapsed export for ONNX/TorchScript
 - **TensorRT** — `export_tensorrt.py` stub; requires NVIDIA GPU + `tensorrt` extra (not run in CI)
-- **Activation-aware probe** — `local_output_error` often `null` (hooks not wired)
 - **Valohai cloud runs** — config present; end-to-end cloud execution not documented here
-- **GPU latency gains** — param reduction proven; significant speedup not yet demonstrated
+- **GPU latency** — CPU speedup measured (see Phase 3C table); CUDA numbers still to run
 
 ---
 
@@ -162,7 +171,7 @@ qgeocompress/
 │   └── valohai/             # pipeline step logic
 ├── scripts/                 # CLI entry points
 │   └── valohai/             # Valohai step wrappers
-├── tests/                   # unit + integration tests (95)
+├── tests/                   # 119 mocked unit tests + test_real_pipeline.py (real checkpoint, `-m slow`)
 ├── valohai.yaml             # Valohai steps + pipeline definition
 ├── Dockerfile               # production runtime image (WIP)
 └── results/
@@ -307,52 +316,44 @@ python scripts/compress_model.py \
 
 ### 7. Hold-out validation (recommended for credible results)
 
+One command runs the split, the baseline, the probe, every selection arm, the gates
+and the Phase 3C report — and picks the gate JSONs up by run label instead of by
+hard-coded hash:
+
 ```bash
-python scripts/create_dota128_holdout.py --seed 42
-
-python scripts/train_baseline.py \
-  --data-yaml datasets/dota128_holdout/dota128_holdout_select.yaml \
-  --epochs 10 --project runs/obb/runs --name baseline_holdout
-
-BEST="runs/obb/runs/obb/runs/baseline_holdout/weights/best.pt"
-HOLDOUT=datasets/dota128_holdout
-
-python scripts/evaluate_calibration.py \
-  --weights "$BEST" \
-  --data-yaml "$HOLDOUT/dota128_holdout_test.yaml" \
-  --compression baseline \
-  --run-label holdout_test_baseline
-
-python scripts/compress_model.py \
-  --method structural-probe --rank-ratio 0.84 --weights "$BEST" \
-  --data-yaml "$HOLDOUT/dota128_holdout_select.yaml" \
-  --run-label holdout_select
-
-python scripts/compress_model.py \
-  --method structural-low-rank --rank-ratio 0.84 --weights "$BEST" \
-  --selection-strategy pareto-gain --max-replaced-layers 5 \
-  --sensitivity-file results/summaries/structural_layer_sensitivity_holdout_select.json \
-  --bn-data-yaml "$HOLDOUT/dota128_holdout_train.yaml" \
-  --eval-data-yaml "$HOLDOUT/dota128_holdout_test.yaml" \
-  --bn-recalibration-batches 20 \
-  --run-label holdout_top5_pareto
-
-python scripts/check_reliability_gate.py \
-  --baseline results/summaries/calibration_baseline_holdout_test_baseline_3cebaa50.json \
-  --candidate results/summaries/calibration_structural_r0.840_holdout_top5_pareto_test_f215351d.json \
-  --compression-summary results/summaries/structural-low-rank_11845535.json
+./scripts/run_headtohead.sh                          # ~25 min on 4 CPU cores
+./scripts/run_headtohead.sh --device cuda            # same run on GPU
+./scripts/run_headtohead.sh --weights path/to/my.pt  # your own checkpoint
 ```
 
-**Hold-out results (test split, WIP — small n=24):**
+> **Do not fine-tune the baseline on the 80-image hold-out train split.** The
+> previously documented `train_baseline.py --epochs 10` step produces a **0.469**
+> mAP50 model (vs **0.927** for the pretrained checkpoint) — 80 images is too few.
+> The runner compresses the pretrained checkpoint instead; see Known Limitations
+> for what that costs in interpretation.
 
-| Method | mAP50 | CER@0.8 | Params | Gate |
-| ------ | ----: | ------: | -----: | ---- |
-| Baseline | 0.929 | 0.004 | ref | — |
-| Top-5 sensitivity | 0.879 | 0.005 | −0.21% | methodologically_valid |
-| Top-5 pareto-gain | **0.933** | 0.005 | **−5.63%** | deployable |
-| Full structural r=0.84 | 0.266 | — | −7.34% | rejected |
+**Hold-out head-to-head (test split, n=24, all regenerated by `./scripts/run_headtohead.sh`):**
 
-> Results on 24 test images are **directional**, not publication-grade. Treat as proof-of-method, not final performance claims.
+| Method | mAP50 | CER@0.8 | ECE | Params Δ | Latency ms | Gate |
+| ------ | ----: | ------: | --: | -------: | ---------: | ---- |
+| Baseline (`yolo11n-obb.pt`) | **0.927** | 0.0044 | 0.0421 | ref | 101.0 | reference |
+| Top-3 sensitivity | 0.888 | 0.0049 | 0.0553 | −4.58% | 90.6 | deployable |
+| Top-5 sensitivity | 0.875 | 0.0000 | 0.0637 | −5.04% | 85.0 | deployable |
+| Top-3 pareto-gain | 0.910 | 0.0045 | 0.0420 | −5.09% | 86.6 | deployable |
+| Top-5 pareto-gain | 0.909 | 0.0050 | 0.0473 | **−5.63%** | 90.1 | deployable |
+| Top-8 pareto-gain | 0.894 | 0.0098 | 0.0480 | −5.96% | 90.1 | deployable |
+| Top-5 quantum-qaoa (classical QUBO) | 0.875 | 0.0000 | 0.0637 | −5.04% | 99.6 | deployable |
+| Top-5 quantum-qaoa (QAOA simulator) | **0.910** | 0.0045 | 0.0440 | −5.19% | 93.1 | deployable |
+| SVD in-place r=0.84 | 0.891 | 0.0067 | 0.0369 | — | — | — |
+
+What the run actually shows:
+
+- **Pareto-gain and the QAOA simulator tie at the top** (mAP50 0.909–0.910). QAOA saves slightly fewer parameters than top-5 pareto-gain (−5.19% vs −5.63%) for the same accuracy.
+- **The classical exact QUBO picks the same five layers as the sensitivity heuristic** and lands at 0.875 — so on this instance the QAOA *approximation* selected a better subset than the exact minimizer of the same objective. That says the QUBO objective is imperfectly aligned with test mAP, not that QAOA is stronger.
+- **More layers is not better**: top-8 pareto-gain buys 0.33 extra points of parameter reduction and costs 0.015 mAP50.
+- **Compression speeds up CPU inference**: every arm beats the 101.0 ms baseline. But two arms with an identical layer set differ by ~17%, so that spread is the measurement noise floor — only the baseline comparison is meaningful.
+
+> 24 test images: **directional, not publication-grade**. Proof-of-method, not final performance claims.
 
 ### 9. Phase 3C comparison report
 
@@ -419,20 +420,24 @@ Pipeline: `qgc-baseline-eval` → `qgc-structural-probe` → `qgc-compress-selec
 | **2B** | Baseline mAP50 ≈ 0.954, CER@0.8 ≈ 0.022 | In-sample (train=val caveat) |
 | **3A** | Full structural r=0.84 → mAP collapse | Reproduced |
 | **3B in-sample** | Selective top-5 → mAP 0.888, −4.75% params | In-sample only |
-| **3B hold-out** | Pareto top-5 → mAP 0.933, −5.63% params | Strict split (n=24 test) |
-| **Phase Q hold-out** | QAOA simulator top-5 → mAP 0.915, −5.36% params, gate deployable | QUBO + PennyLane simulator (12-layer subset) |
+| **3B hold-out** | Pareto top-5 → mAP 0.909, −5.63% params, gate deployable | Strict split (n=24 test), current code |
+| **Phase Q hold-out** | QAOA simulator top-5 → mAP 0.910, −5.19% params, gate deployable | QUBO + PennyLane simulator (16-variable prefilter) |
+| **Head-to-head** | 7 arms under identical conditions; every arm faster than baseline on CPU | One command, regenerable |
+
+> Rows 2A–3B in-sample predate the GT-matching fix and the working activation probe; they are kept as history, not as current measurements. Only the two hold-out rows and the head-to-head row come from the current code.
 
 ---
 
 ## Known Limitations
 
 - **Small dataset** — DOTA128 (128 images); hold-out test = 24 images only.
+- **The baseline is the pretrained checkpoint, not a fine-tune.** Fine-tuning `yolo11n-obb.pt` for 10 epochs on the 80-image hold-out train split (the command in step 7) yields **mAP50 0.469** on the test split, far below the pretrained model's 0.927 — 80 images is not enough to fine-tune on without wrecking it. The head-to-head therefore compresses the pretrained checkpoint. DOTA128 is a subset of the DOTA data that checkpoint was trained on, so **baseline mAP50 is optimistic**; the compression deltas are still measured under identical conditions and remain valid as relative results.
+- **Calibration numbers depend on the Ultralytics version.** GT matching keyed predictions on `result.path`, which Ultralytics 8.4 renames to `image0`, `image1`, … for a list source. Every prediction missed its ground truth (TP 0, CER@0.8 1.0) until this was fixed. Summaries produced before the fix are in `results/archive/pre_ultralytics_8.4/` and are not reproducible by the current code.
 - **In-sample Phase 2** — early results used `train == val`; hold-out protocol fixes this for Phase 3B+.
 - **Structural serving** — direct ONNX/TorchScript blocked; use collapsed fallback or no-fuse `.pt` (see export matrix in `docs/PROJECT_PLAN.md`)
-- **Probe signal** — `local_output_error` not fully implemented; selection relies mainly on single-layer mAP drop.
 - **Ultralytics paths** — nested `runs/obb/runs/obb/runs/...` from default project settings.
-- **Quantum scope** — QAOA runs on a **simulator** (≲20 layers); no real QPU and no quantum speedup is claimed. See [`docs/QUANTUM.md`](docs/QUANTUM.md).
-- **CI** — GitHub Actions runs `pytest` on push/PR; **no GPU** jobs in CI.
+- **Quantum scope** — QAOA runs on a **simulator**, capped at 16 variables (20 qubits was OOM-killed at ~11 GB; measured cost table in [`docs/QUANTUM.md`](docs/QUANTUM.md)). Beyond 16 candidates the solver keeps the highest parameter-gain layers and records `qaoa_prefiltered_from`. No real QPU, no quantum speedup claimed.
+- **CI** — GitHub Actions runs `ruff check`, the mocked suite, and the real-model suite on push/PR; **no GPU** jobs in CI.
 
 ---
 
@@ -440,17 +445,26 @@ Pipeline: `qgc-baseline-eval` → `qgc-structural-probe` → `qgc-compress-selec
 
 See [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) for the full end-to-end plan.
 
-### Next step — full model, real comparison
+### Done — head-to-head at DOTA128 scale
 
-All current hold-out results are **proof-of-method on DOTA128** (128 images, 24-image test split). They are directional, not publication-grade. The **next step** is to run the **same pipeline on a complete, production-scale model and dataset** and **compare all methods head-to-head** under identical conditions:
+Every selection strategy now runs under identical conditions from one command
+(`./scripts/run_headtohead.sh`, ~25 min CPU), with latency columns filled. See the
+comparison table above and [`results/reports/qgeocompress_phase3c_comparison.md`](results/reports/qgeocompress_phase3c_comparison.md).
+
+Answers so far, at this scale:
+
+- *Does quantum layer selection beat classical heuristics?* It ties the best classical heuristic (0.910 vs 0.910) and beats the **exact** minimizer of the same QUBO (0.875) — which points at the objective, not the solver.
+- *Does compression speed up inference?* Yes on CPU: 85–99.6 ms vs 101.0 ms baseline, though individual arm differences sit inside a ~17% noise floor.
+
+### Next step — production scale
+
+DOTA128 results are **directional, not publication-grade** (24 test images, and a baseline whose training data included them). The next step is the same pipeline on full DOTA with a properly trained baseline, plus CUDA latency:
 
 | What to compare | Methods |
 | --------------- | ------- |
 | Layer selection | pareto-gain · sensitivity · **quantum-qaoa (simulator)** · classical QUBO |
 | Compression | structural selective · SVD in-place · baseline |
 | Metrics | mAP50 · CER@0.8 · ECE · **real latency (GPU)** · params · model size · export path |
-
-**Target:** full DOTA (or a larger hold-out), same train/select/test protocol, one unified Phase 3C report with latency columns filled, and a clear answer to: *does quantum layer selection beat classical heuristics at scale, and does compression actually speed up inference?*
 
 Until that run, treat DOTA128 numbers as **portfolio evidence**, not final performance claims.
 
