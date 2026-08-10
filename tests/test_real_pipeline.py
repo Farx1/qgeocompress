@@ -143,31 +143,28 @@ def test_gt_matching_finds_true_positives(model, data_yaml):
     assert metrics["ece"] < 0.2
 
 
-def test_predictions_are_streamed_not_materialised(model, data_yaml):
-    """A non-streaming predict holds every Result for the split at once.
-
-    Regression: that OOM-killed the process on 250 full aerial images while
-    working fine on 128 small tiles.
-    """
-    import inspect
-
+def test_predictions_run_in_bounded_chunks(model, data_yaml):
+    """Handed a whole split, Ultralytics buffers it: 200 aerial images decoded
+    up front at 10.8 GB resident, and 250 got the process OOM-killed with no
+    traceback. Chunking bounds memory whatever the predictor does internally."""
     from qgeocompress.evaluation.gt_matching import run_yolo_predictions
 
-    source = inspect.getsource(run_yolo_predictions)
-    assert '"stream": True' in source
-
-    seen: list[bool] = []
+    calls: list[int] = []
     original = model.predict
 
     def spy(**kwargs):
-        seen.append(kwargs.get("stream") is True)
+        calls.append(len(kwargs["source"]))
+        assert kwargs.get("stream") is True
         return original(**kwargs)
 
     model.predict = spy
     try:
-        preds = run_yolo_predictions(model, data_yaml=data_yaml, imgsz=640, device="cpu")
+        preds = run_yolo_predictions(
+            model, data_yaml=data_yaml, imgsz=640, device="cpu", chunk_size=8
+        )
     finally:
         model.predict = original
 
-    assert seen == [True]
-    assert preds
+    assert len(calls) > 1, "the split must be split into chunks, not sent at once"
+    assert max(calls) <= 8
+    assert sum(calls) == len(preds)

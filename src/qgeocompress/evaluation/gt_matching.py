@@ -335,43 +335,47 @@ def run_yolo_predictions(
     conf_threshold: float = 0.001,
     imgsz: int = 640,
     device: str | None = None,
+    chunk_size: int = 16,
 ) -> dict[str, list[OBBDetection]]:
-    """Run YOLO-OBB inference on the validation split."""
+    """Run YOLO-OBB inference on the validation split, in bounded-memory chunks."""
     pred_by_image: dict[str, list[OBBDetection]] = {}
     images = list_val_images(dataset=dataset, data_yaml=data_yaml)
-    paths = [str(p) for _, p in images]
-    if not paths:
+    if not images:
         return pred_by_image
 
     from qgeocompress.compression.structural_low_rank import has_factorized_layers
     from qgeocompress.evaluation.obb_validate import no_fuse
 
-    predict_kwargs = {
-        "source": paths,
-        "imgsz": imgsz,
-        "device": device,
-        "conf": conf_threshold,
-        "verbose": False,
-        # Stream: a non-streaming predict holds every Result for the whole split
-        # in memory at once. That is fine for 128 small tiles and gets the
-        # process OOM-killed on 250 full aerial images.
-        "stream": True,
-    }
-
-    def consume(results) -> None:
+    def predict_chunk(chunk: list[tuple[str, Path]]) -> None:
+        kwargs = {
+            "source": [str(path) for _, path in chunk],
+            "imgsz": imgsz,
+            "device": device,
+            "conf": conf_threshold,
+            "verbose": False,
+            "stream": True,
+        }
+        results = model.predict(**kwargs)
         # Do not key on result.path: for a list source Ultralytics labels results
         # "image0", "image1", ... , which silently matched every prediction
-        # against an empty GT list (TP=0, CER@0.8=1.0). Predictions come back in
+        # against an empty GT list (TP=0, CER@0.8=1.0). Results come back in
         # input order.
-        for (image_id, _), result in zip(images, results, strict=True):
+        for (image_id, _), result in zip(chunk, results, strict=True):
             pred_by_image[image_id] = predictions_from_yolo_result(
                 result, image_id, conf_threshold
             )
 
-    if has_factorized_layers(model):
-        # The generator must be drained inside the patch, not after it.
-        with no_fuse():
-            consume(model.predict(**predict_kwargs))
-    else:
-        consume(model.predict(**predict_kwargs))
+    # Chunked on purpose. stream=True is not enough: handed a list of paths,
+    # Ultralytics buffers the whole run before yielding (measured: 200 full
+    # aerial images all decoded in the first 135 s, resident set 10.8 GB, flat
+    # afterwards). 250 images then exceeded the box and the process was
+    # OOM-killed with no traceback. Chunking bounds memory whatever the
+    # predictor does internally.
+    for start in range(0, len(images), chunk_size):
+        chunk = images[start : start + chunk_size]
+        if has_factorized_layers(model):
+            with no_fuse():  # the generator must be drained inside the patch
+                predict_chunk(chunk)
+        else:
+            predict_chunk(chunk)
     return pred_by_image
