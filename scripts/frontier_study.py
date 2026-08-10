@@ -36,6 +36,7 @@ from qgeocompress.compression.data_aware import (
     layer_importance,
     param_count,
     rank_for_energy,
+    transfer_importance,
 )
 from qgeocompress.compression.layer_sensitivity import (
     _load_bchw_tensor,
@@ -278,18 +279,22 @@ def main(argv: list[str] | None = None) -> None:
     probe_tensors = [_load_bchw_tensor(p, 640, args.device) for p in probe_images[: args.seq_images]]
     print("measuring end-to-end layer sensitivity")
     sensitivity = measure_importance(args.weights, convs_all, grams, probe_tensors[:3])
-    importance = layer_importance(sensitivity)
+    importance = transfer_importance(
+        sensitivity, {n: {"conv": c, "gram": grams[n]} for n, c in convs_all.items()}
+    )
+    importance_raw = layer_importance(sensitivity)
     ranked = sorted(sensitivity.items(), key=lambda kv: -kv[1])[:5]
     print("  most sensitive:", ", ".join(f"{n}={v:.3f}" for n, v in ranked))
 
     def budget_ranks(
-        convs: dict[str, nn.Conv2d], pct: float, weighted: bool = False
+        convs: dict[str, nn.Conv2d], pct: float, weighted: str | bool = False
     ) -> dict[str, int]:
         total = sum(p.numel() for p in baseline.model.parameters())
         return allocate_ranks_by_budget(
             {n: {"conv": c, "gram": grams[n]} for n, c in convs.items()},
             target_saved_params=int(total * pct / 100.0),
-            importance=importance if weighted else None,
+            importance={"transfer": importance, "raw": importance_raw}.get(weighted)
+            if weighted else None,
         )
 
     def run_arms(arms: list[dict[str, Any]]) -> None:
@@ -388,7 +393,7 @@ def main(argv: list[str] | None = None) -> None:
         for pct in (5.0, 8.0, 12.0, 16.0, 20.0, 25.0, 30.0):
             arms.append({
                 "name": f"new data-aware budget {pct:.0f}%",
-                "ranks": budget_ranks(convs_all, pct, weighted=True),
+                "ranks": budget_ranks(convs_all, pct, weighted="transfer"),
                 "gram": True,
             })
         run_arms(arms)
@@ -407,7 +412,7 @@ def main(argv: list[str] | None = None) -> None:
     for pct in (10.0, 20.0, 30.0):
         arms.append({
             "name": f"H5 budget {pct:.0f}% + importance",
-            "ranks": budget_ranks(convs_all, pct, weighted=True),
+            "ranks": budget_ranks(convs_all, pct, weighted="transfer"),
             "gram": True,
         })
     arms.append({
@@ -419,7 +424,7 @@ def main(argv: list[str] | None = None) -> None:
     for pct in (10.0, 20.0, 30.0):
         arms.append({
             "name": f"H6 sequential budget {pct:.0f}% + importance",
-            "ranks": budget_ranks(convs_all, pct, weighted=True),
+            "ranks": budget_ranks(convs_all, pct, weighted="transfer"),
             "gram": True,
             "mode": "sequential",
         })
