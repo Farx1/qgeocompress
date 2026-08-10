@@ -96,6 +96,7 @@ def benchmark_inference(
         results.append({
             "batch_size": bs,
             "latency_ms_mean": round(mean_lat, 3),
+            "latency_ms_sd": round(statistics.stdev(latencies_ms), 3) if len(latencies_ms) > 1 else 0.0,
             "latency_ms_p50": round(float(np.percentile(latencies_ms, 50)), 3) if latencies_ms else 0.0,
             "latency_ms_p95": round(float(np.percentile(latencies_ms, 95)), 3) if latencies_ms else 0.0,
             "throughput_img_s": round(1000.0 / mean_lat, 2) if mean_lat > 0 else 0.0,
