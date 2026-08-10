@@ -66,3 +66,6 @@ htmlcov/
 AGENTS.md
 CLAUDE.md
 .gitnexus/
+
+# Ultralytics label caches (regenerated on every run)
+*.cache
