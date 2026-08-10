@@ -19,6 +19,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--device", default=None)
     parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument("--run-label", default=None, help="Names the summary so reports can find it")
     args = parser.parse_args(argv)
 
     logger = setup_logging()
@@ -31,8 +32,9 @@ def main(argv: list[str] | None = None) -> None:
         imgsz=args.imgsz,
         device=device,
     )
-    out = args.output or project_root() / "results" / "summaries" / f"benchmark_{args.weights.stem}.json"
-    save_json({"weights": str(args.weights), "benchmarks": results}, out)
+    stem = args.run_label or args.weights.stem
+    out = args.output or project_root() / "results" / "summaries" / f"benchmark_{stem}.json"
+    save_json({"weights": str(args.weights), "run_label": args.run_label, "benchmarks": results}, out)
     logger.info("Benchmark saved to %s", out)
     print(json.dumps(results, indent=2))
 

@@ -20,7 +20,7 @@ class StructuralLowRankConv2d(nn.Module):
 
         c_in, c_out = conv.in_channels, conv.out_channels
         k = conv.kernel_size[0]
-        rank = max(1, min(rank, c_in, c_out))
+        rank = max(1, min(rank, max_useful_rank(conv)))
 
         self.rank = rank
         self.in_channels = c_in
@@ -68,10 +68,21 @@ class StructuralLowRankConv2d(nn.Module):
             self.up.bias.data.copy_(conv.bias.data)
 
     @classmethod
+    def from_factors(cls, conv: nn.Conv2d, down: torch.Tensor, up: torch.Tensor):
+        """Build the block from externally computed factors (see data_aware.py)."""
+        block = cls(conv, down.shape[0])
+        with torch.no_grad():
+            block.down.weight.copy_(down)
+            block.up.weight.copy_(up)
+            if conv.bias is not None and block.up.bias is not None:
+                block.up.bias.copy_(conv.bias.data)
+        return block
+
+    @classmethod
     def param_count(cls, conv: nn.Conv2d, rank: int) -> int:
         c_in, c_out = conv.in_channels, conv.out_channels
         k = conv.kernel_size[0]
-        rank = max(1, min(rank, c_in, c_out))
+        rank = max(1, min(rank, max_useful_rank(conv)))
         n = c_in * rank * k * k + rank * c_out
         if conv.bias is not None:
             n += c_out
@@ -81,13 +92,18 @@ class StructuralLowRankConv2d(nn.Module):
         return self.up(self.down(x))
 
 
+def max_useful_rank(conv: nn.Conv2d) -> int:
+    """Rank bound of W reshaped to (c_out, c_in*kh*kw).
+
+    The old bound was min(c_in, c_out), which for k>1 truncated layers with
+    c_in < c_out below the rank their weight matrix actually carries.
+    """
+    return min(conv.out_channels, conv.in_channels * conv.kernel_size[0] * conv.kernel_size[1])
+
+
 def _rank_for_conv(conv: nn.Conv2d, rank_ratio: float) -> int:
-    c_out, c_in = conv.out_channels, conv.in_channels
-    k = conv.kernel_size[0]
-    flat = c_out * c_in * k * k
-    w2d = conv.weight.data.reshape(c_out, -1)
-    max_rank = min(w2d.shape[0], w2d.shape[1])
-    return max(1, int(max_rank * rank_ratio))
+    w2d = conv.weight.data.reshape(conv.out_channels, -1)
+    return max(1, int(min(w2d.shape) * rank_ratio))
 
 
 def _set_module(root: nn.Module, dotted_name: str, module: nn.Module) -> None:

@@ -8,7 +8,6 @@ from ultralytics import YOLO
 
 from qgeocompress.data.corruptions import apply_corruption
 from qgeocompress.data.prepare_dota import get_data_yaml
-from qgeocompress.evaluation.detection_metrics import summarize_validation
 from qgeocompress.evaluation.system_metrics import _sample_images
 from qgeocompress.models.load_model import extract_detection_metrics
 

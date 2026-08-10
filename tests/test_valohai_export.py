@@ -1,4 +1,3 @@
-from pathlib import Path
 
 from qgeocompress.valohai.export import run_export_if_accepted
 

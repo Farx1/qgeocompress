@@ -13,14 +13,14 @@
     "min_param_reduction_pct": 2.0,
     "require_status_ok": true
   },
-  "baseline_map50": 0.9286933889828436,
-  "candidate_map50": 0.9146052406668271,
-  "map50_drop_vs_baseline": 0.014088,
-  "baseline_cer08": 0.004292,
-  "candidate_cer08": 0.008696,
-  "cer08_delta_vs_baseline": 0.004404,
-  "real_param_reduction_pct": 5.36,
+  "baseline_map50": 0.9267706857671465,
+  "candidate_map50": 0.9103784128573518,
+  "map50_drop_vs_baseline": 0.016392,
+  "baseline_cer08": 0.004425,
+  "candidate_cer08": 0.004545,
+  "cer08_delta_vs_baseline": 0.00012,
+  "real_param_reduction_pct": 5.19,
   "candidate_weights": "runs/compressed/structural_low_rank/structural_low_rank_r0.840_holdout_top5_qaoa_sim.pt",
-  "baseline_run_id": "calibration_baseline_holdout_test_baseline_3cebaa50",
+  "baseline_run_id": "calibration_baseline_holdout_test_baseline_0ebf352f",
   "candidate_run_id": "calibration_structural_r0.840_holdout_top5_qaoa_sim_test_81cc02aa"
 }

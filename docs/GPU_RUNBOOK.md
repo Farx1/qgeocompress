@@ -76,7 +76,7 @@ After compression + calibration JSONs exist, pass the matching paths (filenames 
 
 ```bash
 python scripts/check_reliability_gate.py \
-  --baseline results/summaries/calibration_baseline_holdout_test_baseline_3cebaa50.json \
+  --baseline "$(ls -t results/summaries/calibration_baseline_holdout_test_baseline_*.json | head -1)" \
   --candidate results/summaries/calibration_structural_r0.840_holdout_top5_pareto_bn20_test_XXXXXXXX.json \
   --compression-summary results/summaries/structural-low-rank_XXXXXXXX.json
 ```

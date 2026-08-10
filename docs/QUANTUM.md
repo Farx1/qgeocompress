@@ -128,8 +128,22 @@ print(meta["solver"], meta["qubo_energy"])
 
 - **Simulator, not hardware.** Runs on `default.qubit` (CPU state vector). No
   real QPU, no quantum speedup is claimed.
-- **Small scale.** State-vector simulation is exponential in qubit count; keep
-  candidate layers ≲ 20 for QAOA. Larger instances fall back to classical.
+- **Small scale.** Cost grows with both the state vector (`2**n`) and the
+  `~n²/2` `ZZ` terms the optimizer differentiates through. Measured on 4 CPU
+  cores (2 QAOA layers, 40 gradient steps):
+
+  | qubits | peak RSS | wall time |
+  | -----: | -------: | --------: |
+  | 12 | 187 MB | 16 s |
+  | 14 | 276 MB | 23 s |
+  | 16 | 692 MB | 59 s |
+  | 18 | 2.7 GB | 210 s |
+  | 20 | ~11 GB | OOM-killed |
+
+  `select_layers_by_qaoa` therefore caps QAOA at **16 variables**: past that it
+  keeps the 16 highest parameter-gain candidates and records
+  `qaoa_prefiltered_from` in the run metadata. The full backbone+neck probe
+  yields 28 candidates, so this prefilter is on by default.
 - **Heuristic.** QAOA is approximate. On the hold-out probe (8 layers, `k=5`) it
   reached ≈ 97% of the classical optimum energy — competitive but not exact.
 - **No advantage claim.** For these sizes, classical brute-force is instant and

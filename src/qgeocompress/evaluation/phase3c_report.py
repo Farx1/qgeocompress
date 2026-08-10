@@ -28,16 +28,28 @@ PENDING_ROWS: list[dict[str, str]] = [
 
 CANONICAL_CANDIDATES: list[dict[str, Any]] = [
     {"method": "Baseline (hold-out test)", "run_label": "holdout_test_baseline", "kind": "baseline"},
-    {"method": "Structural top-3 sensitivity", "run_label": "holdout_top3_sens", "cal_suffix": "holdout_top3_sens_test"},
-    {"method": "Structural top-5 sensitivity", "run_label": "holdout_top5_sens", "cal_suffix": "holdout_top5_sens_test"},
-    {"method": "Structural top-3 pareto-gain", "run_label": "holdout_top3_pareto", "cal_suffix": "holdout_top3_pareto_test"},
-    {"method": "Structural top-5 pareto-gain", "run_label": "holdout_top5_pareto", "cal_suffix": "holdout_top5_pareto_test"},
-    {"method": "Structural top-5 quantum-qaoa (classical QUBO)", "run_label": "holdout_top5_qaoa", "cal_suffix": "holdout_top5_qaoa_test"},
-    {"method": "Structural top-5 quantum-qaoa (QAOA simulator)", "run_label": "holdout_top5_qaoa_sim", "cal_suffix": "holdout_top5_qaoa_sim_test"},
-    {"method": "SVD in-place r=0.84 (hold-out test)", "run_label": "holdout_low_rank_r084", "cal_suffix": "holdout_low_rank_r084_test"},
-    {"method": "Structural top-8 pareto-gain", "run_label": "holdout_top8_pareto", "cal_suffix": "holdout_top8_pareto_test"},
-    {"method": "Structural full r=0.84", "run_label": "holdout_full", "cal_suffix": "holdout_full_test"},
+    {"method": "Structural top-3 sensitivity", "run_label": "holdout_top3_sens"},
+    {"method": "Structural top-5 sensitivity", "run_label": "holdout_top5_sens"},
+    {"method": "Structural top-3 pareto-gain", "run_label": "holdout_top3_pareto"},
+    {"method": "Structural top-5 pareto-gain", "run_label": "holdout_top5_pareto"},
+    {"method": "Structural top-5 quantum-qaoa (classical QUBO)", "run_label": "holdout_top5_qaoa"},
+    {"method": "Structural top-5 quantum-qaoa (QAOA simulator)", "run_label": "holdout_top5_qaoa_sim"},
+    {"method": "SVD in-place r=0.84 (hold-out test)", "run_label": "holdout_low_rank_r084"},
+    {"method": "Structural top-8 pareto-gain", "run_label": "holdout_top8_pareto"},
+    {"method": "Structural full r=0.84", "run_label": "holdout_full"},
 ]
+
+
+def _baseline_latency(summaries_dir: Path) -> float | None:
+    """Batch-1 latency from benchmark_inference.py --run-label holdout_test_baseline."""
+    path = summaries_dir / "benchmark_holdout_test_baseline.json"
+    if not path.exists():
+        return None
+    benchmarks = json.loads(path.read_text(encoding="utf-8")).get("benchmarks") or []
+    for entry in benchmarks:
+        if entry.get("batch_size") == 1:
+            return entry.get("latency_ms_mean")
+    return benchmarks[0].get("latency_ms_mean") if benchmarks else None
 
 
 def _load_json_dir(summaries_dir: Path, pattern: str) -> list[dict[str, Any]]:
@@ -116,7 +128,7 @@ def build_phase3c_rows(summaries_dir: Path) -> list[dict[str, Any]]:
             "param_reduction_pct": 0.0,
             "bn_batches": None,
             "gate_status": "reference",
-            "latency_ms_mean": None,
+            "latency_ms_mean": _baseline_latency(summaries_dir),
             "status": "ok",
         })
 
@@ -124,7 +136,8 @@ def build_phase3c_rows(summaries_dir: Path) -> list[dict[str, Any]]:
         if spec.get("kind") == "baseline":
             continue
         compress = _find_by_run_label(compress_rows, spec["run_label"])
-        cal = _find_cal(calibrations, spec["cal_suffix"]) if spec.get("cal_suffix") else None
+        # Calibration runs are labelled "<run_label>_test" by evaluate_calibration.py.
+        cal = None if spec.get("kind") == "baseline" else _find_cal(calibrations, f"{spec['run_label']}_test")
         gate = _find_gate(gates, cal.get("run_id") if cal else None)
 
         if compress is None and cal is None:
@@ -191,8 +204,11 @@ def render_phase3c_markdown(rows: list[dict[str, Any]]) -> str:
         "",
         "## Notes",
         "",
-        "- Pareto-gain runs with `bn_batches=0` predate CLI default fix (now 20 for structural-low-rank).",
-        "- Re-run top-5 pareto with BN=20: see `docs/GPU_RUNBOOK.md`.",
+        "- **Latency is not comparable across rows.** Each arm is benchmarked in its own process "
+        "at a different time on a shared host; the two arms that select an identical layer set "
+        "(top-5 sensitivity and top-5 quantum-qaoa/classical) land 17% apart. A back-to-back "
+        "rerun of baseline vs top-5 pareto-gain (5 repeats each) gives 98.8 +/- 4.3 ms vs "
+        "96.0 +/- 1.7 ms: no speedup is established at this model size.",
         "- Gate statuses: `deployable_compression_candidate`, `methodologically_valid`, `rejected`.",
     ])
     return "\n".join(lines) + "\n"
