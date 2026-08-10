@@ -38,6 +38,14 @@ from qgeocompress.compression.data_aware import (
     rank_for_energy,
     transfer_importance,
 )
+from qgeocompress.compression.factorized import (
+    FactorizedConv2d,
+    allocate_from_curves,
+    importance_from_curves,
+    measure_scheme_curves,
+    refit_second_factor,
+    scheme_params,
+)
 from qgeocompress.compression.layer_sensitivity import (
     _load_bchw_tensor,
     capture_layer_inputs,
@@ -63,7 +71,9 @@ from qgeocompress.evaluation.gt_matching import (
 from qgeocompress.utils.config import project_root, save_json
 
 
-def eligible_convs(model: nn.Module, include_1x1: bool) -> list[tuple[str, nn.Conv2d]]:
+def eligible_convs(
+    model: nn.Module, include_1x1: bool, include_head: bool = False
+) -> list[tuple[str, nn.Conv2d]]:
     """Factorizable convs outside the detection head.
 
     Grouped convs are skipped (the factorization assumes dense channel mixing)
@@ -74,7 +84,7 @@ def eligible_convs(model: nn.Module, include_1x1: bool) -> list[tuple[str, nn.Co
     for name, module in model.named_modules():
         if not isinstance(module, nn.Conv2d) or module.groups != 1:
             continue
-        if name.startswith("model.23"):  # detection head
+        if name.startswith("model.23") and not include_head:  # detection head
             continue
         k = module.kernel_size[0]
         if k not in (1, 3) or (k == 1 and not include_1x1):
@@ -207,6 +217,78 @@ def measure_importance(
     return sensitivity
 
 
+def build_variant_multi_scheme(
+    weights: str,
+    allocation: dict[str, tuple[str, int]],
+    probe_tensors: list[torch.Tensor],
+    refit: bool = True,
+    grams_for_init: dict[str, torch.Tensor] | None = None,
+) -> tuple[YOLO, dict[str, Any]]:
+    """Replace each conv with its own best scheme, then refit the second factor.
+
+    Inputs are captured from the ORIGINAL model: the refit already absorbs the
+    per-layer approximation error, and chaining it on drifted inputs was
+    measured to lose against the parallel pass once a budget allocation is in
+    play.
+    """
+    reference = YOLO(weights, task="obb")
+    model = YOLO(weights, task="obb")
+    original = sum(p.numel() for p in model.model.parameters())
+
+    inputs_by_layer = _capture_many(reference, list(allocation), probe_tensors)
+
+    scheme_counts: dict[str, int] = {}
+    for name, (scheme, rank) in allocation.items():
+        if scheme == "none":
+            continue
+        conv = model.model.get_submodule(name)
+        if scheme_params(conv, scheme, rank) >= sum(p.numel() for p in conv.parameters()):
+            continue
+        block = FactorizedConv2d(conv, scheme, rank)
+        if scheme == "spatial-first" and grams_for_init and name in grams_for_init:
+            # spatial-first is the one scheme whose whitened optimum is a plain
+            # SVD, so start it from the data-aware factors rather than handing it
+            # a worse initialisation than the single-scheme arm gets.
+            down, up = data_aware_factors(conv, rank, grams_for_init[name])
+            with torch.no_grad():
+                block.down.weight.copy_(down)
+                block.up.weight.copy_(up)
+        if refit and inputs_by_layer.get(name):
+            refit_second_factor(block, conv, inputs_by_layer[name])
+        _set_module(model.model, name, block)
+        scheme_counts[scheme] = scheme_counts.get(scheme, 0) + 1
+
+    compressed = sum(p.numel() for p in model.model.parameters())
+    return model, {
+        "original_params": original,
+        "compressed_params": compressed,
+        "param_reduction_pct": round(100.0 * (original - compressed) / original, 3),
+        "layers_replaced": sum(scheme_counts.values()),
+        "schemes": scheme_counts,
+    }
+
+
+def _capture_many(
+    model: YOLO, names: list[str], tensors: list[torch.Tensor]
+) -> dict[str, list[torch.Tensor]]:
+    """Inputs every named layer sees, in one forward per image."""
+    captured: dict[str, list[torch.Tensor]] = {name: [] for name in names}
+
+    def hook(name: str):
+        return lambda _m, args: captured[name].append(args[0].detach())
+
+    handles = [model.model.get_submodule(n).register_forward_pre_hook(hook(n)) for n in names]
+    try:
+        model.model.eval()
+        with torch.no_grad():
+            for x in tensors:
+                model.model(x)
+    finally:
+        for h in handles:
+            h.remove()
+    return captured
+
+
 def evaluate(model: YOLO, test_yaml: str, gt: dict, device: str) -> dict[str, Any]:
     preds = run_yolo_predictions(
         model, data_yaml=test_yaml, conf_threshold=0.001, imgsz=640, device=device
@@ -235,7 +317,7 @@ def main(argv: list[str] | None = None) -> None:
                              "images make the refit underdetermined and it loses to the parallel pass.")
     parser.add_argument("--bn-batches", type=int, default=24)
     parser.add_argument("--resamples", type=int, default=400)
-    parser.add_argument("--preset", choices=["hypotheses", "frontier"], default="hypotheses",
+    parser.add_argument("--preset", choices=["hypotheses", "frontier", "multi"], default="hypotheses",
                         help="hypotheses: isolate H1-H6. frontier: fine sweep of the old method "
                              "against the winning one, for an equal-cost comparison.")
     parser.add_argument("--out", type=Path, default=None)
@@ -258,7 +340,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # Activation statistics come from the select split — never from test.
     probe_images = [str(p) for _, p in list_val_images(data_yaml=select_yaml)[: args.gram_images]]
-    all_convs = dict(eligible_convs(baseline.model, include_1x1=True))
+    all_convs = dict(eligible_convs(baseline.model, include_1x1=True, include_head=True))
     print(f"capturing activations for {len(all_convs)} convs on {len(probe_images)} images")
     captured = capture_layer_inputs(baseline.model, list(all_convs), probe_images, 640, args.device)
 
@@ -268,7 +350,7 @@ def main(argv: list[str] | None = None) -> None:
     del captured
 
     convs_3x3 = dict(eligible_convs(baseline.model, include_1x1=False))
-    convs_all = all_convs
+    convs_all = dict(eligible_convs(baseline.model, include_1x1=True))  # head excluded
 
     def ratio_ranks(convs: dict[str, nn.Conv2d], ratio: float) -> dict[str, int]:
         return {n: max(1, int(max_useful_rank(c) * ratio)) for n, c in convs.items()}
@@ -315,7 +397,15 @@ def main(argv: list[str] | None = None) -> None:
 
         for arm in arms:
             started = time.time()
-            if arm.get("mode") == "sequential":
+            if arm.get("mode") == "multi-scheme":
+                model, meta = build_variant_multi_scheme(
+                    args.weights,
+                    arm["allocation"],
+                    probe_tensors[:4],
+                    refit=arm.get("refit", True),
+                    grams_for_init=grams,
+                )
+            elif arm.get("mode") == "sequential":
                 model, meta = build_variant_sequential(args.weights, arm["ranks"], probe_tensors)
             else:
                 model, meta = build_variant(args.weights, arm["ranks"], grams if arm["gram"] else None)
@@ -381,6 +471,28 @@ def main(argv: list[str] | None = None) -> None:
         print(f"saved {report}")
 
     arms: list[dict[str, Any]] = []
+    if args.preset == "multi":
+        total_params = sum(p.numel() for p in baseline.model.parameters())
+        # Including the head was measured at mAP50 0.15-0.18 at every budget:
+        # its layers only save parameters at ranks that destroy them.
+        for label, convs in (("", convs_all),):
+            print(f"measuring scheme curves{label} ({len(convs)} convs)")
+            curves = measure_scheme_curves(
+                convs, _capture_many(baseline, list(convs), probe_tensors[:3])
+            )
+            curve_importance = importance_from_curves(curves, sensitivity)
+            for pct in (20.0, 30.0, 35.0, 40.0):
+                arms.append({
+                    "name": f"multi-scheme{label} budget {pct:.0f}%",
+                    "allocation": allocate_from_curves(
+                        curves, int(total_params * pct / 100.0), importance=curve_importance
+                    ),
+                    "mode": "multi-scheme",
+                    "gram": False,
+                })
+        run_arms(arms)
+        return
+
     if args.preset == "frontier":
         # Old method: plain SVD, uniform ratio, 3x3 only — what the project shipped.
         for r in (0.95, 0.9, 0.84, 0.8, 0.75, 0.7):

@@ -17,9 +17,9 @@ from qgeocompress.models.load_model import model_size_mb
 
 
 def _has_structural_layers(model: YOLO) -> bool:
-    from qgeocompress.compression.structural_low_rank import StructuralLowRankConv2d
+    from qgeocompress.compression.structural_low_rank import has_factorized_layers
 
-    return any(isinstance(m, StructuralLowRankConv2d) for m in model.model.modules())
+    return has_factorized_layers(model)
 
 
 def _sample_images(

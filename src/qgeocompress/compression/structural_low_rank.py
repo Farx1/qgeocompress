@@ -92,6 +92,20 @@ class StructuralLowRankConv2d(nn.Module):
         return self.up(self.down(x))
 
 
+def has_factorized_layers(model: Any) -> bool:
+    """True if the model holds any block Ultralytics must not Conv+BN fuse.
+
+    Every low-rank block type has to be listed here: the fuse path reads
+    ``.weight`` off the conv it replaces, so a block missing from this check
+    crashes validation rather than degrading quietly.
+    """
+    from qgeocompress.compression.factorized import FactorizedConv2d
+
+    blocks = (StructuralLowRankConv2d, FactorizedConv2d)
+    root = getattr(model, "model", model)
+    return any(isinstance(m, blocks) for m in root.modules())
+
+
 def max_useful_rank(conv: nn.Conv2d) -> int:
     """Rank bound of W reshaped to (c_out, c_in*kh*kw).
 

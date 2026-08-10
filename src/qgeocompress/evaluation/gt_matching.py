@@ -343,7 +343,7 @@ def run_yolo_predictions(
     if not paths:
         return pred_by_image
 
-    from qgeocompress.compression.structural_low_rank import StructuralLowRankConv2d
+    from qgeocompress.compression.structural_low_rank import has_factorized_layers
 
     predict_kwargs = {
         "source": paths,
@@ -352,7 +352,7 @@ def run_yolo_predictions(
         "conf": conf_threshold,
         "verbose": False,
     }
-    if any(isinstance(m, StructuralLowRankConv2d) for m in model.model.modules()):
+    if has_factorized_layers(model):
         from qgeocompress.evaluation.obb_validate import predict_no_fuse
 
         results = predict_no_fuse(model, **predict_kwargs)

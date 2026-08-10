@@ -23,6 +23,7 @@ import torch
 import torch.nn as nn
 from ultralytics import YOLO
 
+from qgeocompress.compression.factorized import FactorizedConv2d
 from qgeocompress.compression.structural_low_rank import StructuralLowRankConv2d
 
 
@@ -60,7 +61,7 @@ def factor_parameters(model: YOLO) -> list[nn.Parameter]:
     """Trainable parameters of the low-rank blocks only."""
     params: list[nn.Parameter] = []
     for module in model.model.modules():
-        if isinstance(module, StructuralLowRankConv2d):
+        if isinstance(module, (StructuralLowRankConv2d, FactorizedConv2d)):
             params.extend(module.parameters())
     return params
 
