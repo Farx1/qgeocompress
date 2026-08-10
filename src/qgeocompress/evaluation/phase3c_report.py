@@ -204,9 +204,11 @@ def render_phase3c_markdown(rows: list[dict[str, Any]]) -> str:
         "",
         "## Notes",
         "",
-        "- Latency is single-run CPU wall time on a shared host. Two arms that select the "
-        "identical layer set (top-5 sensitivity and top-5 quantum-qaoa/classical) differ by "
-        "~17%, so treat that as the noise floor and compare only against the baseline row.",
+        "- **Latency is not comparable across rows.** Each arm is benchmarked in its own process "
+        "at a different time on a shared host; the two arms that select an identical layer set "
+        "(top-5 sensitivity and top-5 quantum-qaoa/classical) land 17% apart. A back-to-back "
+        "rerun of baseline vs top-5 pareto-gain (5 repeats each) gives 98.8 +/- 4.3 ms vs "
+        "96.0 +/- 1.7 ms: no speedup is established at this model size.",
         "- Gate statuses: `deployable_compression_candidate`, `methodologically_valid`, `rejected`.",
     ])
     return "\n".join(lines) + "\n"

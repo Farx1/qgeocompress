@@ -24,13 +24,13 @@ A post-training optimization stack for **YOLO11n-OBB** on **DOTA** aerial detect
 | **Phase 2 (low-rank + calibration)** | Done | Rank frontier + GT-matched ECE/CER |
 | **Phase 3B (structural selective)** | Validated on hold-out | Pareto-gain ~5–6% params, mAP preserved |
 | **Quantum selection (QAOA)** | Implemented | QUBO + QAOA on simulator; classical exact reference |
-| **Head-to-head comparison** | Done on DOTA128 | 7 arms, one command, latency filled — see below |
+| **Head-to-head comparison** | Done on DOTA128 | 7 arms, one command; latency measured and found flat |
 | **Valohai DAG** | MVP implemented | Not yet battle-tested on Valohai cloud |
 | **ONNX / TensorRT export** | Multi-format CLI | Baseline ONNX/TS; structural via collapsed fallback or `.pt` no-fuse |
 | **Full DOTA scale** | Not started | MVP runs on DOTA128 (128 images) |
 | **Production deployment** | Out of scope (for now) | Research → MLOps brick, not a shipped product |
 
-**Latest validated result (hold-out test split, regenerated end to end):** pareto-gain top-5 → mAP50 **0.909**, CER@0.8 **0.0050**, **−5.63%** params, gate `deployable`. Every compressed arm is also **faster than baseline on CPU** (85–99.6 ms vs 101.0 ms at batch 1).
+**Latest validated result (hold-out test split, regenerated end to end):** pareto-gain top-5 → mAP50 **0.909** (baseline 0.927), CER@0.8 **0.0050**, **−5.63%** params, gate `deployable`. **No latency gain is established**: a back-to-back rerun gives 98.8 ± 4.3 ms baseline vs 96.0 ± 1.7 ms compressed.
 
 Reproduce the whole table in ~25 minutes on CPU:
 
@@ -76,7 +76,7 @@ Phase 3B' Hold-out validation (80/24/24)               [done]
 Phase 3B'' Pareto-gain layer selection                 [done — deployable gate on hold-out]
 Phase Q   Quantum QAOA layer selection (QUBO)          [done — simulator + classical ref]
 Phase 4   Valohai DAG + export path                     [done — MVP + multi-format]
-Phase 3C  Head-to-head, all strategies + CPU latency   [done — one command]
+Phase 3C  Head-to-head, all strategies + CPU latency   [done — no speedup found]
 Phase 5   Scale (full DOTA), GPU latency, TensorRT      [planned — user GPU]
 ```
 
@@ -120,7 +120,7 @@ Phase 5   Scale (full DOTA), GPU latency, TensorRT      [planned — user GPU]
 - **Structural inference** — requires `no-fuse` path (`obb_validate.py`, `system_metrics.py`); use collapsed export for ONNX/TorchScript
 - **TensorRT** — `export_tensorrt.py` stub; requires NVIDIA GPU + `tensorrt` extra (not run in CI)
 - **Valohai cloud runs** — config present; end-to-end cloud execution not documented here
-- **GPU latency** — CPU speedup measured (see Phase 3C table); CUDA numbers still to run
+- **Latency gains** — parameter reduction proven; no CPU speedup measurable at 2.7M params, CUDA still to run
 
 ---
 
@@ -351,7 +351,7 @@ What the run actually shows:
 - **Pareto-gain and the QAOA simulator tie at the top** (mAP50 0.909–0.910). QAOA saves slightly fewer parameters than top-5 pareto-gain (−5.19% vs −5.63%) for the same accuracy.
 - **The classical exact QUBO picks the same five layers as the sensitivity heuristic** and lands at 0.875 — so on this instance the QAOA *approximation* selected a better subset than the exact minimizer of the same objective. That says the QUBO objective is imperfectly aligned with test mAP, not that QAOA is stronger.
 - **More layers is not better**: top-8 pareto-gain buys 0.33 extra points of parameter reduction and costs 0.015 mAP50.
-- **Compression speeds up CPU inference**: every arm beats the 101.0 ms baseline. But two arms with an identical layer set differ by ~17%, so that spread is the measurement noise floor — only the baseline comparison is meaningful.
+- **No latency gain is established.** The per-arm latencies above come from separate runs at different times and are not comparable — the two arms with an *identical* layer set land 17% apart. Benchmarked back to back (5 repeats each), baseline is 98.8 ± 4.3 ms and top-5 pareto-gain is 96.0 ± 1.7 ms. −5.6% of parameters in 5 of 28 layers does not move wall time on a 2.7M-parameter model.
 
 > 24 test images: **directional, not publication-grade**. Proof-of-method, not final performance claims.
 
@@ -422,7 +422,7 @@ Pipeline: `qgc-baseline-eval` → `qgc-structural-probe` → `qgc-compress-selec
 | **3B in-sample** | Selective top-5 → mAP 0.888, −4.75% params | In-sample only |
 | **3B hold-out** | Pareto top-5 → mAP 0.909, −5.63% params, gate deployable | Strict split (n=24 test), current code |
 | **Phase Q hold-out** | QAOA simulator top-5 → mAP 0.910, −5.19% params, gate deployable | QUBO + PennyLane simulator (16-variable prefilter) |
-| **Head-to-head** | 7 arms under identical conditions; every arm faster than baseline on CPU | One command, regenerable |
+| **Head-to-head** | 7 arms under identical conditions; no CPU latency gain measurable | One command, regenerable |
 
 > Rows 2A–3B in-sample predate the GT-matching fix and the working activation probe; they are kept as history, not as current measurements. Only the two hold-out rows and the head-to-head row come from the current code.
 
@@ -454,7 +454,7 @@ comparison table above and [`results/reports/qgeocompress_phase3c_comparison.md`
 Answers so far, at this scale:
 
 - *Does quantum layer selection beat classical heuristics?* It ties the best classical heuristic (0.910 vs 0.910) and beats the **exact** minimizer of the same QUBO (0.875) — which points at the objective, not the solver.
-- *Does compression speed up inference?* Yes on CPU: 85–99.6 ms vs 101.0 ms baseline, though individual arm differences sit inside a ~17% noise floor.
+- *Does compression speed up inference?* Not measurably here. Back-to-back, 98.8 ± 4.3 ms vs 96.0 ± 1.7 ms. Parameter reduction is real; wall-time reduction is not, at this model size on CPU.
 
 ### Next step — production scale
 
