@@ -358,9 +358,9 @@ def run_yolo_predictions(
         results = predict_no_fuse(model, **predict_kwargs)
     else:
         results = model.predict(**predict_kwargs)
-    id_by_path = {str(p): image_id for image_id, p in images}
-    for result in results:
-        image_path = str(result.path) if hasattr(result, "path") else ""
-        image_id = id_by_path.get(image_path, Path(image_path).stem)
+    # Do not key on result.path: for a list source Ultralytics labels results
+    # "image0", "image1", ... , which silently matched every prediction against
+    # an empty GT list (TP=0, CER@0.8=1.0). Predictions come back in input order.
+    for (image_id, _), result in zip(images, results, strict=True):
         pred_by_image[image_id] = predictions_from_yolo_result(result, image_id, conf_threshold)
     return pred_by_image

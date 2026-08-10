@@ -27,8 +27,11 @@ from qgeocompress.quantum.qubo import (
 # Above this many variables, skip exhaustive enumeration.
 _BRUTEFORCE_LIMIT = 22
 
-# A state-vector simulator holds 2**n amplitudes: 20 qubits is ~16 MB, 28 is ~4 GB.
-_QAOA_QUBIT_LIMIT = 20
+# Measured on 4 CPU cores, 2 QAOA layers, 40 gradient steps (peak RSS / wall time):
+#   12 qubits 187 MB / 16 s | 14 → 276 MB / 23 s | 16 → 692 MB / 59 s | 18 → 2.7 GB / 210 s
+# Cost is driven by autodiff through the ~n**2/2 ZZ terms, not by the state
+# vector alone. 20 qubits needed ~11 GB here and was OOM-killed, so cap at 16.
+_QAOA_QUBIT_LIMIT = 16
 
 
 def is_quantum_available() -> bool:
