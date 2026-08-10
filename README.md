@@ -30,14 +30,25 @@ A post-training optimization stack for **YOLO11n-OBB** on **DOTA** aerial detect
 | **Full DOTA scale** | Not started | MVP runs on DOTA128 (128 images) |
 | **Production deployment** | Out of scope (for now) | Research → MLOps brick, not a shipped product |
 
-**Latest validated result — compression frontier (80-image test split, paired bootstrap):**
+**Latest validated result — compression frontier (80-image test split, paired bootstrap).**
+The project's own quality gate accepts a candidate when mAP50 drops ≤ 0.10, CER@0.8 rises ≤ 0.02
+and parameters fall ≥ 2%. Largest gate-passing compression, per pipeline:
 
-| Pipeline | Params Δ | mAP50 | Δ vs baseline (95% CI) |
-| -------- | -------: | ----: | ---------------------- |
-| Shipped (plain SVD, r=0.84) | −2.29% | 0.7848 | −0.110 [−0.195, −0.053] |
-| **Data-aware + budget allocation** | **−19.16%** | **0.7953** | **−0.099 [−0.182, −0.037]** |
+| Pipeline | Params Δ | mAP50 | Δ vs baseline (95% CI) | CER@0.8 | Gate |
+| -------- | -------: | ----: | ---------------------- | ------: | ---- |
+| Baseline `yolo11n-obb.pt` | ref | 0.8943 | reference | 0.0182 | — |
+| Shipped (plain SVD, r=0.9) | −0.34% | 0.8091 | −0.085 [−0.172, −0.028] | 0.0191 | pass |
+| Shipped (plain SVD, r=0.84) | −2.29% | 0.7848 | −0.110 [−0.195, −0.053] | 0.0196 | **fail** |
+| **Data-aware + transfer-weighted budget** | **−20.67%** | **0.8007** | **−0.094 [−0.170, −0.032]** | 0.0180 | **pass** |
 
-**8.4× more compression at accuracy the data cannot distinguish** (the paired CIs overlap almost entirely; the point estimate is marginally higher). At the aggressive end, −32.6% params scores 0.717 against 0.715 for the old method at −8.5% — 3.8× more compression for the same accuracy. Full frontier: [`results/reports/qgeocompress_frontier_frontier.md`](results/reports/qgeocompress_frontier_frontier.md).
+**61× more compression at the same gate.** Two other ways to read the same frontier:
+
+- At −16.2% parameters the new pipeline scores **0.8143**, higher than *every* old-method arm — including
+  the one that compresses essentially nothing (−0.02% → 0.8014).
+- At the aggressive end, −32.5% parameters scores 0.761 against 0.715 for the old method at −8.5%:
+  3.8× the compression **and** +0.045 mAP50.
+
+Full frontier: [`results/reports/qgeocompress_frontier_frontier.md`](results/reports/qgeocompress_frontier_frontier.md).
 
 **No latency gain is established**: a back-to-back rerun gives 98.8 ± 4.3 ms baseline vs 96.0 ± 1.7 ms compressed.
 
@@ -139,7 +150,7 @@ Four hypotheses, each isolated on the same split
 | **1×1 convs must be included** | Confirmed | They hold **39.4%** of the weights and were excluded by `kernel_size != (3,3)`. Candidate coverage went 41.1% → 80.5%. |
 | **Data-aware SVD beats plain SVD** | Confirmed, large | Minimizing `‖(W−Ŵ)X‖` instead of `‖W−Ŵ‖_F`: **33–48% lower output error at identical rank**; at −17.6% params, mAP50 **0.554 vs 0.320**. |
 | **Budget allocation beats a global ratio** | Confirmed, large | Lagrangian allocation over per-layer spectra: at −16.9% params it scores 0.783 where a uniform ratio at −17.6% scores 0.320. |
-| **Sensitivity weighting on top of the budget** | Confirmed, small | +0.009 mAP50 at ~−17% and +0.013 at ~−32%, while also allocating slightly more compression. Real but near the noise floor. |
+| **Weighting the budget by layer sensitivity** | Confirmed — but only in the right units | Raw sensitivity is worth ~+0.01 mAP50, near the noise floor. The allocation prices layers in relative tail energy, so the weight must be a **transfer coefficient** `w_l / ε_l(r₀)` — network error per unit of that layer's own error. At a −31% budget: **0.767 vs 0.719 (raw) vs 0.700 (unweighted)**. |
 | **Drift-corrected sequential refit** | Partial | At a fixed ratio r=0.5 (−17.6% params): plain 0.320 → data-aware 0.554 → sequential **0.755**. But combined with budget allocation it *loses* (0.675 vs 0.717 at −32.6%), so it is not in the recommended path. Needs ≥16 probe images: deep layers see ~400 patch positions each against `d` up to 2304, and at 3 images the refit is underdetermined. |
 | **Energy-threshold ranks (τ)** | Rejected | τ=0.95 gives −44.7% params at mAP50 **0.057**. A per-layer energy threshold ignores both the parameter cost of a rank and how much the layer matters downstream. |
 | **Feature distillation recovery** | Rejected here | Label-free distillation from the uncompressed teacher moved mAP50 by +0.019 / −0.066 / +0.044 across three budgets — inside the noise. Implemented and documented in `compression/distillation.py`, not part of the recommended path. |
