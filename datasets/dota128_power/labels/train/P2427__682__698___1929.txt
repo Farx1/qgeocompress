@@ -1,0 +1,1 @@
+/home/user/qgeocompress/datasets/dota128/labels/train/P2427__682__698___1929.txt
