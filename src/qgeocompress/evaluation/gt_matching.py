@@ -344,6 +344,7 @@ def run_yolo_predictions(
         return pred_by_image
 
     from qgeocompress.compression.structural_low_rank import has_factorized_layers
+    from qgeocompress.evaluation.obb_validate import no_fuse
 
     predict_kwargs = {
         "source": paths,
@@ -351,16 +352,26 @@ def run_yolo_predictions(
         "device": device,
         "conf": conf_threshold,
         "verbose": False,
+        # Stream: a non-streaming predict holds every Result for the whole split
+        # in memory at once. That is fine for 128 small tiles and gets the
+        # process OOM-killed on 250 full aerial images.
+        "stream": True,
     }
-    if has_factorized_layers(model):
-        from qgeocompress.evaluation.obb_validate import predict_no_fuse
 
-        results = predict_no_fuse(model, **predict_kwargs)
+    def consume(results) -> None:
+        # Do not key on result.path: for a list source Ultralytics labels results
+        # "image0", "image1", ... , which silently matched every prediction
+        # against an empty GT list (TP=0, CER@0.8=1.0). Predictions come back in
+        # input order.
+        for (image_id, _), result in zip(images, results, strict=True):
+            pred_by_image[image_id] = predictions_from_yolo_result(
+                result, image_id, conf_threshold
+            )
+
+    if has_factorized_layers(model):
+        # The generator must be drained inside the patch, not after it.
+        with no_fuse():
+            consume(model.predict(**predict_kwargs))
     else:
-        results = model.predict(**predict_kwargs)
-    # Do not key on result.path: for a list source Ultralytics labels results
-    # "image0", "image1", ... , which silently matched every prediction against
-    # an empty GT list (TP=0, CER@0.8=1.0). Predictions come back in input order.
-    for (image_id, _), result in zip(images, results, strict=True):
-        pred_by_image[image_id] = predictions_from_yolo_result(result, image_id, conf_threshold)
+        consume(model.predict(**predict_kwargs))
     return pred_by_image

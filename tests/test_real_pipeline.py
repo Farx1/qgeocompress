@@ -141,3 +141,33 @@ def test_gt_matching_finds_true_positives(model, data_yaml):
     metrics = compute_calibration_metrics(summary)
     assert metrics["confident_error_rate_08"] < 0.1
     assert metrics["ece"] < 0.2
+
+
+def test_predictions_are_streamed_not_materialised(model, data_yaml):
+    """A non-streaming predict holds every Result for the split at once.
+
+    Regression: that OOM-killed the process on 250 full aerial images while
+    working fine on 128 small tiles.
+    """
+    import inspect
+
+    from qgeocompress.evaluation.gt_matching import run_yolo_predictions
+
+    source = inspect.getsource(run_yolo_predictions)
+    assert '"stream": True' in source
+
+    seen: list[bool] = []
+    original = model.predict
+
+    def spy(**kwargs):
+        seen.append(kwargs.get("stream") is True)
+        return original(**kwargs)
+
+    model.predict = spy
+    try:
+        preds = run_yolo_predictions(model, data_yaml=data_yaml, imgsz=640, device="cpu")
+    finally:
+        model.predict = original
+
+    assert seen == [True]
+    assert preds
