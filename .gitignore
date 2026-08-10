@@ -66,3 +66,7 @@ htmlcov/
 
 # Ultralytics label caches (regenerated on every run)
 *.cache
+
+# Large external datasets (fetched on demand, ~2 GB)
+datasets/DOTAv1/
+datasets/DOTAv1.zip

@@ -289,20 +289,20 @@ def _capture_many(
     return captured
 
 
-def evaluate(model: YOLO, test_yaml: str, gt: dict, device: str) -> dict[str, Any]:
-    preds = run_yolo_predictions(
-        model, data_yaml=test_yaml, conf_threshold=0.001, imgsz=640, device=device
-    )
-    return per_image_class_records(preds, gt)
+def evaluate(
+    model: YOLO, test_yaml: str, gt: dict, device: str, imgsz: int = 640
+) -> tuple[dict[str, Any], dict[str, float]]:
+    """One prediction pass, returning both the AP records and the gate metrics.
 
-
-def reliability(model: YOLO, test_yaml: str, gt: dict, device: str) -> dict[str, float]:
-    """ECE and CER@0.8 — the gate metrics — on the same predictions."""
+    Predictions dominate the cost of an arm, so scoring accuracy and reliability
+    from a single pass halves the study's runtime.
+    """
     preds = run_yolo_predictions(
-        model, data_yaml=test_yaml, conf_threshold=0.001, imgsz=640, device=device
+        model, data_yaml=test_yaml, conf_threshold=0.001, imgsz=imgsz, device=device
     )
+    records = per_image_class_records(preds, gt)
     metrics = compute_calibration_metrics(match_dataset_predictions(preds, gt, iou_threshold=0.5))
-    return {"ece": metrics["ece"], "cer08": metrics["confident_error_rate_08"]}
+    return records, {"ece": metrics["ece"], "cer08": metrics["confident_error_rate_08"]}
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -310,6 +310,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--split-dir", default="datasets/dota128_power")
     parser.add_argument("--weights", default="yolo11n-obb.pt")
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--imgsz", type=int, default=640)
+    parser.add_argument("--budgets", type=float, nargs="+", default=None,
+                        help="Override the data-aware budget sweep (percent of model params).")
+    parser.add_argument("--old-ratios", type=float, nargs="+", default=None,
+                        help="Override the plain-SVD rank ratios compared against.")
     parser.add_argument("--gram-images", type=int, default=16)
     parser.add_argument("--seq-images", type=int, default=16,
                         help="Probe images for the drift-corrected pass. Deep layers see only "
@@ -345,7 +350,7 @@ def main(argv: list[str] | None = None) -> None:
     probe_images = [str(p) for _, p in list_val_images(data_yaml=select_yaml)[: args.gram_images]]
     all_convs = dict(eligible_convs(baseline.model, include_1x1=True, include_head=True))
     print(f"capturing activations for {len(all_convs)} convs on {len(probe_images)} images")
-    captured = capture_layer_inputs(baseline.model, list(all_convs), probe_images, 640, args.device)
+    captured = capture_layer_inputs(baseline.model, list(all_convs), probe_images, args.imgsz, args.device)
 
     grams: dict[str, torch.Tensor] = {}
     for name, conv in all_convs.items():
@@ -361,7 +366,7 @@ def main(argv: list[str] | None = None) -> None:
     def energy_ranks(convs: dict[str, nn.Conv2d], energy: float) -> dict[str, int]:
         return {n: rank_for_energy(c, energy, grams[n]) for n, c in convs.items()}
 
-    probe_tensors = [_load_bchw_tensor(p, 640, args.device) for p in probe_images[: args.seq_images]]
+    probe_tensors = [_load_bchw_tensor(p, args.imgsz, args.device) for p in probe_images[: args.seq_images]]
     print("measuring end-to-end layer sensitivity")
     sensitivity = measure_importance(args.weights, convs_all, grams, probe_tensors[:3])
     importance = transfer_importance(
@@ -384,7 +389,7 @@ def main(argv: list[str] | None = None) -> None:
 
     def run_arms(arms: list[dict[str, Any]]) -> None:
         print("scoring baseline")
-        base_records = evaluate(baseline, test_yaml, gt, args.device)
+        base_records, base_reliability = evaluate(baseline, test_yaml, gt, args.device, args.imgsz)
         base_boot = bootstrap_map50(base_records, n_resamples=args.resamples)
         rows: list[dict[str, Any]] = [{
             "arm": "baseline",
@@ -395,7 +400,7 @@ def main(argv: list[str] | None = None) -> None:
             "delta": 0.0,
             "delta_ci_low": 0.0,
             "delta_ci_high": 0.0,
-            **reliability(baseline, test_yaml, gt, args.device),
+            **base_reliability,
         }]
 
         for arm in arms:
@@ -413,9 +418,13 @@ def main(argv: list[str] | None = None) -> None:
             else:
                 model, meta = build_variant(args.weights, arm["ranks"], grams if arm["gram"] else None)
             recalibrate_batchnorm(
-                model, data_yaml=train_yaml, num_batches=args.bn_batches, device=args.device
+                model,
+                data_yaml=train_yaml,
+                num_batches=args.bn_batches,
+                device=args.device,
+                imgsz=args.imgsz,
             )
-            records = evaluate(model, test_yaml, gt, args.device)
+            records, arm_reliability = evaluate(model, test_yaml, gt, args.device, args.imgsz)
             boot = bootstrap_map50(records, n_resamples=args.resamples)
             delta = paired_delta_map50(base_records, records, n_resamples=args.resamples)
             rows.append({
@@ -428,7 +437,7 @@ def main(argv: list[str] | None = None) -> None:
                 "delta_ci_low": round(delta["ci_low"], 4),
                 "delta_ci_high": round(delta["ci_high"], 4),
                 "layers_replaced": meta["layers_replaced"],
-                **reliability(model, test_yaml, gt, args.device),
+                **arm_reliability,
             })
             print(
                 f"{arm['name']:<34} -{meta['param_reduction_pct']:5.2f}% params  "
@@ -498,14 +507,14 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.preset == "frontier":
         # Old method: plain SVD, uniform ratio, 3x3 only — what the project shipped.
-        for r in (0.95, 0.9, 0.84, 0.8, 0.75, 0.7):
+        for r in args.old_ratios or (0.95, 0.9, 0.84, 0.8, 0.75, 0.7):
             arms.append({
                 "name": f"old plain-svd r={r}",
                 "ranks": ratio_ranks(convs_3x3, r),
                 "gram": False,
             })
         # New method: data-aware factors, all convs, importance-weighted budget.
-        for pct in (5.0, 8.0, 12.0, 16.0, 20.0, 25.0, 30.0):
+        for pct in args.budgets or (5.0, 8.0, 12.0, 16.0, 20.0, 25.0, 30.0):
             arms.append({
                 "name": f"new data-aware budget {pct:.0f}%",
                 "ranks": budget_ranks(convs_all, pct, weighted="transfer"),
