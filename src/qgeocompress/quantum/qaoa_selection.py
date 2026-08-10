@@ -18,6 +18,7 @@ from typing import Any
 
 from qgeocompress.quantum.qubo import (
     QUBO,
+    _param_gain_abs,
     build_selection_qubo,
     qubo_energy,
     qubo_to_ising,
@@ -25,6 +26,9 @@ from qgeocompress.quantum.qubo import (
 
 # Above this many variables, skip exhaustive enumeration.
 _BRUTEFORCE_LIMIT = 22
+
+# A state-vector simulator holds 2**n amplitudes: 20 qubits is ~16 MB, 28 is ~4 GB.
+_QAOA_QUBIT_LIMIT = 20
 
 
 def is_quantum_available() -> bool:
@@ -196,8 +200,16 @@ def select_layers_by_qaoa(
     ``backend`` is one of ``"auto"`` (QAOA if available, else classical),
     ``"qaoa"`` (require PennyLane), or ``"classical"`` (brute-force/greedy).
     """
+    rows = list(probe_results)
+    prefiltered_from = None
+    if backend != "classical" and len(rows) > _QAOA_QUBIT_LIMIT and is_quantum_available():
+        # The simulator cannot hold 2**n amplitudes past ~20 qubits. Keep the
+        # highest parameter-gain candidates so QAOA still decides the subset.
+        prefiltered_from = len(rows)
+        rows = sorted(rows, key=_param_gain_abs, reverse=True)[:_QAOA_QUBIT_LIMIT]
+
     q, layer_names, qubo_meta = build_selection_qubo(
-        probe_results,
+        rows,
         max_layers,
         gain_weight=gain_weight,
         drop_penalty=drop_penalty,
@@ -233,6 +245,7 @@ def select_layers_by_qaoa(
         meta = {
             "solver": solver,
             "backend_requested": backend,
+            "qaoa_prefiltered_from": prefiltered_from,
             "selected_bits": bits,
             "num_selected": len(selected),
             "qubo_energy": qubo_energy(q, bits),
