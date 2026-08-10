@@ -453,7 +453,12 @@ def main(argv: list[str] | None = None) -> None:
         )
         print(f"\nsaved {out}")
 
-        report = project_root() / "results" / "reports" / f"qgeocompress_frontier_{args.preset}.md"
+        report = (
+            project_root()
+            / "results"
+            / "reports"
+            / f"qgeocompress_frontier_{split.name}_{args.preset}.md"
+        )
         report.parent.mkdir(parents=True, exist_ok=True)
         lines = [
             "# Q-GEOCompress — compression frontier",
