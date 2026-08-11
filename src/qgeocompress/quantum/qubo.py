@@ -136,3 +136,52 @@ def qubo_to_ising(q: QUBO) -> tuple[dict[int, float], dict[tuple[int, int], floa
             j[(a, b)] = j.get((a, b), 0.0) + coeff / 4.0
 
     return h, j, offset
+
+
+def solve_uniform_coupling_exact(q: QUBO, n: int) -> list[int]:
+    """Exact minimizer for a QUBO whose couplings are all equal, in O(n log n).
+
+    The selection QUBO built by :func:`build_selection_qubo` has the form
+
+        E(x) = sum_i c_i x_i + gamma * (sum_i x_i - k)**2
+
+    and the only quadratic term comes from expanding the cardinality penalty, so
+    every pair carries the SAME coupling ``2*gamma``. The quadratic part then
+    depends on ``x`` only through ``m = sum_i x_i``. For a fixed ``m`` the
+    minimum is obtained by taking the ``m`` smallest ``c_i``, so
+
+        min_x E = min over m in [0, n] of  ( sum of m smallest c_i ) + gamma*(m-k)**2
+
+    which a sort and a prefix sum settle exactly.
+
+    This matters for the project's claims rather than for its speed: QAOA, a
+    quantum annealer and exhaustive search all solve an instance class that a
+    sort already solves optimally. A quantum method cannot beat it, and any
+    apparent difference is the solver failing to reach an optimum that is free.
+    Heterogeneous couplings — pairs of layers whose errors genuinely interact —
+    are what would make the formulation non-trivial.
+    """
+    if n == 0:
+        return []
+
+    coupling = {value for (i, j), value in q.items() if i != j}
+    if len(coupling) > 1:
+        raise ValueError("couplings are not uniform; this exact solver does not apply")
+    pair = next(iter(coupling)) if coupling else 0.0
+
+    linear = [q.get((i, i), 0.0) for i in range(n)]
+    order = sorted(range(n), key=lambda i: linear[i])
+
+    best_bits = [0] * n
+    best_energy = float("inf")
+    running = 0.0
+    for m in range(n + 1):
+        if m > 0:
+            running += linear[order[m - 1]]
+        # Expanding (sum x - k)^2 put (1-2k)*gamma on the diagonal already, so the
+        # only quadratic contribution left is the pair term over the m*(m-1)/2 pairs.
+        energy = running + pair * m * (m - 1) / 2
+        if energy < best_energy:
+            best_energy = energy
+            best_bits = [1 if i in set(order[:m]) else 0 for i in range(n)]
+    return best_bits

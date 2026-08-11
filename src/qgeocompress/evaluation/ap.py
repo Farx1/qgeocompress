@@ -156,3 +156,74 @@ def paired_delta_map50(
         "ci_high": float(np.percentile(arr, 97.5)),
         "p_worse": float((arr < 0).mean()),
     }
+
+
+def _auroc(confidences: np.ndarray, correct: np.ndarray) -> float:
+    """Probability a correct detection outranks an incorrect one (ties count half).
+
+    This is the one confidence metric no monotone recalibration can change.
+    Temperature scaling, Platt scaling and any threshold shift all preserve the
+    ordering, so they leave AUROC exactly where it was. A model whose AUROC
+    genuinely improves has become better at *separating* its correct detections
+    from its wrong ones, which is a different claim from being less confident.
+    """
+    positives = confidences[correct > 0.5]
+    negatives = confidences[correct <= 0.5]
+    if positives.size == 0 or negatives.size == 0:
+        return float("nan")
+
+    order = np.argsort(np.concatenate([positives, negatives]), kind="mergesort")
+    ranks = np.empty(order.size, dtype=np.float64)
+    ranks[order] = np.arange(1, order.size + 1)
+    # Average ranks within ties so an all-equal-confidence model scores 0.5.
+    values = np.concatenate([positives, negatives])[order]
+    start = 0
+    for end in range(1, values.size + 1):
+        if end == values.size or values[end] != values[start]:
+            ranks[order[start:end]] = ranks[order[start:end]].mean()
+            start = end
+
+    rank_sum = ranks[: positives.size].sum()
+    return float(
+        (rank_sum - positives.size * (positives.size + 1) / 2) / (positives.size * negatives.size)
+    )
+
+
+def auroc_from_records(records: dict[str, dict[int, dict[str, Any]]], image_ids: list[str]) -> float:
+    """Confidence-vs-correctness AUROC pooled over the given images."""
+    conf: list[float] = []
+    correct: list[float] = []
+    for image_id in image_ids:
+        for entry in records.get(image_id, {}).values():
+            conf.extend(entry["conf"])
+            correct.extend(entry["correct"])
+    return _auroc(np.asarray(conf, dtype=np.float64), np.asarray(correct, dtype=np.float64))
+
+
+def paired_delta_auroc(
+    records_a: dict[str, dict[int, dict[str, Any]]],
+    records_b: dict[str, dict[int, dict[str, Any]]],
+    n_resamples: int = 400,
+    seed: int = 0,
+) -> dict[str, float]:
+    """CI for AUROC(b) - AUROC(a), resampling the same images for both arms."""
+    image_ids = sorted(set(records_a) & set(records_b))
+    rng = np.random.default_rng(seed)
+    point = auroc_from_records(records_b, image_ids) - auroc_from_records(records_a, image_ids)
+
+    draws = []
+    for _ in range(n_resamples):
+        sample = list(rng.choice(image_ids, size=len(image_ids), replace=True))
+        delta = auroc_from_records(records_b, sample) - auroc_from_records(records_a, sample)
+        if np.isfinite(delta):
+            draws.append(delta)
+
+    arr = np.asarray(draws, dtype=np.float64)
+    if arr.size == 0:
+        return {"delta": point, "ci_low": float("nan"), "ci_high": float("nan")}
+    return {
+        "delta": point,
+        "ci_low": float(np.percentile(arr, 2.5)),
+        "ci_high": float(np.percentile(arr, 97.5)),
+        "p_better": float((arr > 0).mean()),
+    }

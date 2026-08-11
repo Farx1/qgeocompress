@@ -115,7 +115,54 @@ layers, meta = select_layers_by_qaoa(probe_rows, max_layers=5,
 print(meta["solver"], meta["qubo_energy"])
 ```
 
-## 5. Why this is a legitimate quantum use case
+## 5. What the formulation can and cannot buy
+
+**The selection QUBO is solvable by a sort.** Expanding `γ(Σx − k)²` puts the
+*same* coupling `2γ` on every pair, so the quadratic part depends on `x` only
+through `m = Σx`. For a fixed `m` the minimum takes the `m` smallest linear
+coefficients, hence
+
+```
+min_x E(x) = min over m in [0, n] of  ( sum of m smallest c_i ) + γ(m − k)²
+```
+
+A sort and a prefix sum solve this exactly in `O(n log n)`
+(`qubo.solve_uniform_coupling_exact`, verified against exhaustive search on 20
+random instances in `tests/test_quantum_selection.py`). **No quantum method can
+beat it** — not because QAOA is weak, but because the instance class is trivial.
+Any gap a solver shows here is that solver failing to reach a free optimum.
+
+**Heterogeneous couplings are what would make it non-trivial — and they were
+measured.** Writing `δy_i` for the change in the network's output when only
+layer `i` is factorized, the first-order composition is
+
+```
+ε²(S) = ‖Σ_{i∈S} δy_i‖² = Σ_i ‖δy_i‖² + 2 Σ_{i<j} ⟨δy_i, δy_j⟩
+```
+
+so the true objective is an Ising model whose couplings are the Gram matrix of
+those perturbations. Measured directly as `J_ij = ε²({i,j}) − ε²({i}) − ε²({j})`
+over the 16 highest-saving layers of YOLO11n-OBB (120 pairs, 3 probe images):
+
+| quantity | value |
+| -------- | ----- |
+| linear terms, sum | 0.00250 |
+| couplings, sum | −0.00064 (26% of the linear part) |
+| couplings negative | 63% |
+| max \|J\| / max linear | 0.22 |
+
+The couplings are real and mostly negative — pairs of layers whose errors
+partially cancel. But they do not move the answer: at k = 4, 6 and 8 the subset
+minimizing the *coupled* objective is exactly the one the separable sort picks,
+gain 0.0%. The linear part dominates the decision.
+
+**Conclusion for this project.** Layer selection offers no quantum lever, at
+either formulation. The honest quantum-inspired direction is not a solver for
+this decision but a different compression *mechanism* — tensor-train / MPS
+factorization, where SVD is the two-site case and the bond dimension is set by
+an entanglement entropy rather than a hand-picked rank.
+
+## 6. Why the QUBO encoding is still worth keeping
 
 - The layer-selection problem is a genuine **NP-hard combinatorial** problem
   (weighted knapsack / cardinality-constrained max-gain).
@@ -124,7 +171,7 @@ print(meta["solver"], meta["qubo_energy"])
 - The classical brute-force solver provides an **exact ground-truth** to measure
   QAOA's approximation quality on real probe data.
 
-## 6. Honest limitations
+## 7. Honest limitations
 
 - **Simulator, not hardware.** Runs on `default.qubit` (CPU state vector). No
   real QPU, no quantum speedup is claimed.
@@ -150,7 +197,7 @@ print(meta["solver"], meta["qubo_energy"])
   optimal. The value here is **methodological**: a clean, portable QUBO encoding
   of the compression decision, ready for quantum-annealing hardware at scale.
 
-## 7. Future work
+## 8. Future work
 
 - **Quantum annealing** — submit the same QUBO to D-Wave (`dimod` / Ocean SDK).
 - **Warm-start QAOA** — seed angles from the greedy/pareto solution.

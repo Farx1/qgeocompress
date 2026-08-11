@@ -160,3 +160,33 @@ def test_classical_backend_is_not_prefiltered():
     _, meta = select_layers_by_qaoa(_probe(28), max_layers=5, backend="classical", return_meta=True)
     assert meta["qaoa_prefiltered_from"] is None
     assert meta["num_variables"] == 28
+
+
+def test_sort_matches_exhaustive_search_on_the_selection_qubo():
+    """The selection QUBO's couplings are all equal, so a sort solves it exactly.
+
+    Expanding gamma*(sum x - k)^2 puts the SAME coupling on every pair, so the
+    quadratic part depends on x only through the count. For a fixed count the
+    minimum takes the smallest linear coefficients, which a sort and a prefix
+    sum settle in O(n log n) — leaving QAOA, annealing and brute force with an
+    optimum that is already free.
+    """
+    import random
+
+    from qgeocompress.quantum.qubo import solve_uniform_coupling_exact
+
+    rng = random.Random(0)
+    for _ in range(20):
+        n = rng.randint(2, 12)
+        rows = [
+            {
+                "layer_name": f"l{i}",
+                "param_gain_abs": rng.randint(100, 100_000),
+                "map50_drop": rng.random() * 0.1,
+            }
+            for i in range(n)
+        ]
+        q, _, _ = build_selection_qubo(rows, rng.randint(0, n))
+        assert qubo_energy(q, solve_uniform_coupling_exact(q, n)) == pytest.approx(
+            qubo_energy(q, solve_bruteforce(q, n))
+        )
