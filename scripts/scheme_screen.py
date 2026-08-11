@@ -31,10 +31,12 @@ import torch.nn.functional as F
 from ultralytics import YOLO
 
 from qgeocompress.compression.layer_sensitivity import capture_layer_inputs
+from qgeocompress.compression.tensor_train import approximate as tt_approximate
 from qgeocompress.evaluation.gt_matching import list_val_images
 from qgeocompress.utils.config import project_root, save_json
 
 SCHEMES = ("spatial-first", "channel-first", "separable")
+TT_LAYOUTS = ("tt-chw", "tt-split", "tt-interleaved")
 
 
 def matricize(weight: torch.Tensor, scheme: str) -> tuple[torch.Tensor, tuple[int, ...]]:
@@ -95,25 +97,45 @@ def output_error(conv: nn.Conv2d, approx_weight: torch.Tensor, inputs: list[torc
     return (num / den) ** 0.5 if den > 0 else 0.0
 
 
+def candidates(conv: nn.Conv2d, method: str, probes: int = 12):
+    """Yield ``(parameter cost, reconstructed weight)`` over a rank sweep.
+
+    Matricization schemes cost ``r * (something)``, linear in the rank. A tensor
+    train costs ``sum_k r_{k-1} * n_k * r_k``, quadratic in the bond dimension on
+    interior bonds, so the two families are only comparable through the actual
+    parameter count — which is why this yields cost alongside each candidate
+    rather than a rank.
+    """
+    if method in SCHEMES:
+        flat, _ = matricize(conv.weight.data, method)
+        top = min(flat.shape)
+        for i in range(1, probes + 1):
+            rank = max(1, round(top * i / probes))
+            yield scheme_params(conv, method, rank), truncated_weight(conv.weight.data, method, rank)
+        return
+
+    layout = method.removeprefix("tt-")
+    top = max(conv.out_channels, conv.in_channels)
+    for i in range(1, probes + 1):
+        rank = max(1, round(top * i / probes))
+        approx, cost, _ = tt_approximate(conv.weight.data, layout, rank)
+        yield cost, approx
+
+
 def params_for_error(
     conv: nn.Conv2d,
-    scheme: str,
+    method: str,
     inputs: list[torch.Tensor],
     target_error: float,
     probes: int = 12,
 ) -> int | None:
     """Cheapest parameter count reaching ``target_error``, or None if unreachable."""
-    flat, _ = matricize(conv.weight.data, scheme)
-    max_rank = min(flat.shape)
     full = int(sum(p.numel() for p in conv.parameters()))
-
     best: int | None = None
-    for i in range(1, probes + 1):
-        rank = max(1, round(max_rank * i / probes))
-        cost = scheme_params(conv, scheme, rank)
+    for cost, approx in candidates(conv, method, probes):
         if cost >= full or (best is not None and cost >= best):
             continue
-        if output_error(conv, truncated_weight(conv.weight.data, scheme, rank), inputs) <= target_error:
+        if output_error(conv, approx, inputs) <= target_error:
             best = cost
     return best
 
@@ -160,35 +182,38 @@ def main(argv: list[str] | None = None) -> None:
         entry = {"layer": name, "params": full, "kernel": conv.kernel_size[0],
                  "c_in": conv.in_channels, "c_out": conv.out_channels}
         for target in args.errors:
-            for scheme in SCHEMES:
-                if conv.kernel_size[0] == 1 and scheme != "spatial-first":
-                    continue  # 1x1: all three matricizations coincide
-                entry[f"{scheme}@{target}"] = params_for_error(conv, scheme, inputs, target)
+            for method in SCHEMES + TT_LAYOUTS:
+                if conv.kernel_size[0] == 1 and method in ("channel-first", "separable"):
+                    continue  # 1x1: those matricizations coincide with spatial-first
+                entry[f"{method}@{target}"] = params_for_error(conv, method, inputs, target)
         rows.append(entry)
 
-    print(f"\n{'target':>7} {'scheme':>14} {'model params kept':>18} {'reduction':>10}")
+    print(f"\n{'target':>7} {'method':>16} {'model params kept':>18} {'reduction':>10}")
     summary = {}
     for target in args.errors:
         per_scheme = defaultdict(int)
         best_mix = 0
         for entry in rows:
             options = {
-                s: entry.get(f"{s}@{target}")
-                for s in SCHEMES
-                if entry.get(f"{s}@{target}") is not None
+                m: entry.get(f"{m}@{target}")
+                for m in SCHEMES + TT_LAYOUTS
+                if entry.get(f"{m}@{target}") is not None
             }
-            for scheme in SCHEMES:
-                per_scheme[scheme] += options.get(scheme, entry["params"])
+            for method in SCHEMES + TT_LAYOUTS:
+                per_scheme[method] += options.get(method, entry["params"])
             best_mix += min(options.values()) if options else entry["params"]
 
         uncompressed = total - sum(e["params"] for e in rows)
-        for scheme in SCHEMES:
-            kept = uncompressed + per_scheme[scheme]
-            print(f"{target:>7} {scheme:>14} {kept:>18} {100 * (1 - kept / total):>9.2f}%")
+        for method in SCHEMES + TT_LAYOUTS:
+            kept = uncompressed + per_scheme[method]
+            print(f"{target:>7} {method:>16} {kept:>18} {100 * (1 - kept / total):>9.2f}%")
         kept = uncompressed + best_mix
-        print(f"{target:>7} {'BEST-PER-LAYER':>14} {kept:>18} {100 * (1 - kept / total):>9.2f}%")
+        print(f"{target:>7} {'BEST-PER-LAYER':>16} {kept:>18} {100 * (1 - kept / total):>9.2f}%")
         summary[str(target)] = {
-            **{s: round(100 * (1 - (uncompressed + per_scheme[s]) / total), 3) for s in SCHEMES},
+            **{
+                m: round(100 * (1 - (uncompressed + per_scheme[m]) / total), 3)
+                for m in SCHEMES + TT_LAYOUTS
+            },
             "best_per_layer": round(100 * (1 - kept / total), 3),
         }
 
