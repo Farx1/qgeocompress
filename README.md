@@ -529,6 +529,13 @@ Contributions and feedback welcome while the project is active.
 
 ---
 
+## Research experiments
+
+[Decision-margin weighting pilot](docs/research/margin_weighting.md) connects related
+papers to an affine decision bound, explicit counterexamples, and a reproducible
+YOLO11n-OBB experiment. The first pilot finds no established AP advantage over uniform
+activation weighting; full results and limitations are included.
+
 ## About
 
 **Jules Barth** — M2 Data & AI Engineering, ESILV (Paris). Focus on LLMs, agentic AI, privacy-preserving ML, and quantum computing.
