@@ -2,6 +2,9 @@
 
 Status: exploratory research, not a production compressor or a claim of scientific priority.
 
+Follow-up: [detection-level distillation with second/fourth moments](detection_moments.md)
+tests localized geometry and per-anchor margins, with proofs and another complete pilot.
+
 ## Question and related work
 
 Can weighting calibration images by proximity to a confidence threshold improve a
