@@ -7,7 +7,7 @@
 
 Reliability-preserving compression for deployable geospatial AI — reduce inference cost (latency, VRAM, model size) without breaking detection performance or operational trust.
 
-A post-training optimization stack for **YOLO11n-OBB** on **DOTA** aerial detection: compress checkpoints under **quality gates** (mAP, ECE, CER@0.8), not blind size reduction.
+A post-training optimization stack for **YOLO11n-OBB** on **DOTA** aerial detection: compress checkpoints under **quality gates** (mAP50 drop, CER@0.8 delta, parameter reduction; ECE is reported, not gated), not blind size reduction.
 
 **Two distinct techniques, named honestly:**
 
@@ -20,7 +20,7 @@ A post-training optimization stack for **YOLO11n-OBB** on **DOTA** aerial detect
 
 | Area | Status | Notes |
 | ---- | ------ | ----- |
-| **Core library** | Stable enough to run | 119 unit tests + 5 real-model tests; lint + both suites in CI |
+| **Core library** | Stable enough to run | 128 unit tests + 5 real-model tests; lint + both suites in CI |
 | **Phase 2 (low-rank + calibration)** | Done | Rank frontier + GT-matched ECE/CER |
 | **Phase 3B (structural selective)** | Validated on hold-out | Pareto-gain ~5–6% params, mAP preserved |
 | **Quantum selection (QAOA)** | Implemented | QUBO + QAOA on simulator; classical exact reference |
@@ -41,6 +41,12 @@ and parameters fall ≥ 2%. Largest gate-passing compression, per pipeline:
 | Shipped (plain SVD, r=0.84) | −2.29% | 0.7848 | −0.110 [−0.195, −0.053] | 0.0196 | **fail** |
 | **Data-aware + transfer-weighted budget** | **−20.67%** | **0.8007** | **−0.094 [−0.170, −0.032]** | 0.0180 | **pass** |
 
+The −20.67% row is a **classical** pipeline: activation-weighted SVD with a Lagrangian rank allocation
+under a parameter budget (`compression/data_aware.py`, `budget_ranks` in `scripts/frontier_study.py`).
+QAOA plays no part in it. The best QAOA-selected model is the hold-out head-to-head arm in step 7
+(−5.19% params, mAP50 0.910 on the Ultralytics scale, 24-image test split).
+The Gate column applies the thresholds above by hand: `frontier_study.py` does not call the reliability gate.
+
 **61× more compression at the same gate.** Two other ways to read the same frontier:
 
 - At −16.2% parameters the new pipeline scores **0.8143**, higher than *every* old-method arm — including
@@ -48,9 +54,13 @@ and parameters fall ≥ 2%. Largest gate-passing compression, per pipeline:
 - At the aggressive end, −32.5% parameters scores 0.761 against 0.715 for the old method at −8.5%:
   3.8× the compression **and** +0.045 mAP50.
 
-Full frontier: [`results/reports/qgeocompress_frontier_frontier.md`](results/reports/qgeocompress_frontier_frontier.md).
+Full frontier: `results/reports/qgeocompress_frontier_frontier.md`, written by `frontier_study.py`.
+**Artefacts not committed yet**: the frontier reports are excluded by `.gitignore` (`results/reports/*`),
+so the −20.67% / 0.8007 row cannot be checked from the repository alone; rerun the command below.
 
-**No latency gain is established**: a back-to-back rerun gives 98.8 ± 4.3 ms baseline vs 96.0 ± 1.7 ms compressed.
+**No latency gain is established, and none is measured for the −20.67% model.** The only back-to-back
+latency run compares the baseline with the step 7 **top-5 pareto-gain** model (−5.63% params):
+98.8 ± 4.3 ms vs 96.0 ± 1.7 ms (5 repeats each).
 
 Reproduce on CPU:
 
@@ -82,7 +92,7 @@ Reports: [`results/reports/qgeocompress_phase3c_comparison.md`](results/reports/
 
 1. **Never compress blindly** — layer sensitivity probe before replacement.
 2. **Never trust in-sample alone** — strict train / select / test splits for method choice vs final proof.
-3. **Reliability matters** — ECE and CER@0.8 gate acceptance alongside mAP50.
+3. **Reliability matters** — CER@0.8 gates acceptance alongside mAP50; ECE is reported for every arm but not gated.
 4. **Negative results are first-class** — Phase 3A (full structural) failure is documented and informs Phase 3B.
 
 ---
@@ -114,7 +124,7 @@ Phase 5   Scale (full DOTA), GPU latency, TensorRT      [planned — user GPU]
 | **Metrics** | GT-matched calibration, ECE, CER@0.8, selective prediction |
 | **Quantum** | PennyLane (QAOA on `default.qubit` simulator) |
 | **MLOps** | Valohai (`valohai.yaml`), Docker |
-| **Quality** | pytest (119 unit + 5 real-model), ruff (enforced in CI), GitHub Actions CI |
+| **Quality** | pytest (128 unit + 5 real-model), ruff (enforced in CI), GitHub Actions CI |
 
 ---
 
@@ -141,8 +151,8 @@ Phase 5   Scale (full DOTA), GPU latency, TensorRT      [planned — user GPU]
 
 ### What made the difference (and what did not)
 
-Four hypotheses, each isolated on the same split
-([`results/reports/qgeocompress_frontier_hypotheses.md`](results/reports/qgeocompress_frontier_hypotheses.md)):
+Eight hypotheses, each isolated on the same split
+(`results/reports/qgeocompress_frontier_hypotheses.md`, written by `frontier_study.py --preset hypotheses`; artefacts not committed yet):
 
 | Hypothesis | Verdict | Evidence |
 | ---------- | ------- | -------- |
@@ -212,7 +222,7 @@ qgeocompress/
 │   └── valohai/             # pipeline step logic
 ├── scripts/                 # CLI entry points
 │   └── valohai/             # Valohai step wrappers
-├── tests/                   # 119 mocked unit tests + test_real_pipeline.py (real checkpoint, `-m slow`)
+├── tests/                   # 128 mocked unit tests + test_real_pipeline.py (real checkpoint, `-m slow`)
 ├── valohai.yaml             # Valohai steps + pipeline definition
 ├── Dockerfile               # production runtime image (WIP)
 └── results/
@@ -310,7 +320,7 @@ python scripts/evaluate_calibration.py \
 python scripts/make_calibration_report.py
 ```
 
-Phase 2 reports: `results/reports/qgeocompress_phase2_report.md`
+Phase 2 outputs: `make_calibration_report.py` writes `results/summaries/calibration_summary.md` (not committed). Committed Phase 2 JSONs: `results/summaries/calibration_low_rank_*.json`, `results/summaries/low-rank_*.json`.
 
 ### 6. Structural compression (Phase 3B)
 
@@ -396,7 +406,7 @@ What the run actually shows:
 
 > 24 test images: **directional, not publication-grade**. Proof-of-method, not final performance claims.
 
-### 9. Phase 3C comparison report
+### 8. Phase 3C comparison report
 
 Aggregate hold-out calibration, compression, and gate JSONs:
 
@@ -406,7 +416,7 @@ python scripts/make_phase3c_report.py
 
 Outputs: `results/reports/qgeocompress_phase3c_comparison.md`, `results/summaries/phase3c_comparison_table.csv`
 
-### 10. One-command hold-out pipeline
+### 9. One-command hold-out pipeline
 
 ```bash
 chmod +x scripts/run_holdout_pipeline.sh
@@ -414,7 +424,7 @@ chmod +x scripts/run_holdout_pipeline.sh
 ./scripts/run_holdout_pipeline.sh --gpu                       # full GPU run (see GPU_RUNBOOK)
 ```
 
-### 11. Export accepted model
+### 10. Export accepted model
 
 ```bash
 python scripts/export_model.py \
@@ -426,7 +436,7 @@ python scripts/export_model.py \
 
 Produces `export_manifest.json` with per-format status. Structural checkpoints: `.pt` (no-fuse) + optional `export_model_collapsed.pt` for Ultralytics-compatible ONNX/TorchScript attempts. See [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) export matrix.
 
-### 8. Valohai post-training DAG (WIP)
+### 11. Valohai post-training DAG (WIP)
 
 Target: orchestrated MLOps pipeline with versioned artifacts.
 
@@ -473,7 +483,7 @@ Pipeline: `qgc-baseline-eval` → `qgc-structural-probe` → `qgc-compress-selec
 
 - **Small dataset** — DOTA128 (128 images). The frontier study uses a 24 train / 24 select / 80 test split (`datasets/dota128_power`) because a pretrained baseline is never trained on our splits, so a larger test set is legitimate and 24 images could not separate any two arms.
 - **Two mAP50 numbers, on purpose.** The frontier tables use this repo's own AP (`evaluation/ap.py`, baseline 0.894) rather than Ultralytics' (0.927), because only ours can be bootstrapped. Per-class AP on a small split punishes rare classes, so absolute values run lower. Every arm is scored identically, and all comparisons are paired — but do not mix the two scales.
-- **The accuracy deltas are not tight.** Even a 0.02%-parameter arm shows Δ ≈ −0.09 with a CI of roughly ±0.07. The *ordering* of methods is robust (the data-aware pipeline dominates at every parameter level by far more than the CI); individual Δ values are not.
+- **The accuracy deltas are not tight, and part of each Δ is BN recalibration.** In `frontier_study.py` every compressed arm gets BatchNorm recalibrated on the 24-image train split; the baseline does not. Even a 0.02%-parameter arm (essentially uncompressed) shows Δ ≈ −0.09 with a CI of roughly ±0.07, so most of the Δ in the frontier table may come from recalibration rather than factorization. A recalibrated-but-uncompressed control arm is still missing. The *ordering* of methods is robust (the data-aware pipeline dominates at every parameter level by far more than the CI); individual Δ values are not.
 - **The baseline is the pretrained checkpoint, not a fine-tune.** Fine-tuning `yolo11n-obb.pt` for 10 epochs on the 80-image hold-out train split (the command in step 7) yields **mAP50 0.469** on the test split, far below the pretrained model's 0.927 — 80 images is not enough to fine-tune on without wrecking it. The head-to-head therefore compresses the pretrained checkpoint. DOTA128 is a subset of the DOTA data that checkpoint was trained on, so **baseline mAP50 is optimistic**; the compression deltas are still measured under identical conditions and remain valid as relative results.
 - **Calibration numbers depend on the Ultralytics version.** GT matching keyed predictions on `result.path`, which Ultralytics 8.4 renames to `image0`, `image1`, … for a list source. Every prediction missed its ground truth (TP 0, CER@0.8 1.0) until this was fixed. Summaries produced before the fix are in `results/archive/pre_ultralytics_8.4/` and are not reproducible by the current code.
 - **In-sample Phase 2** — early results used `train == val`; hold-out protocol fixes this for Phase 3B+.
