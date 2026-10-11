@@ -5,7 +5,10 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-import matplotlib.pyplot as plt
+import matplotlib
+
+matplotlib.use("Agg")  # headless: no Tk/GUI backend needed for saved figures
+import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd
 
 from qgeocompress.evaluation.calibration_real import calibration_run_label, plot_reliability_overlay
@@ -278,7 +281,7 @@ def generate_calibration_report(
     map_cer_fig = plot_map50_vs_cer08(selected)
     summary_md = render_calibration_summary_markdown(selected, baseline)
     summary_path = results_dir / "calibration_summary.md"
-    summary_path.write_text(summary_md)
+    summary_path.write_text(summary_md, encoding="utf-8")
 
     report = {
         "num_calibration_runs": len(all_runs),
