@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import os
 import random
+import shutil
 from pathlib import Path
 
 import yaml
@@ -37,16 +39,18 @@ def _link_or_copy(src: Path, dst: Path, use_symlinks: bool) -> None:
     if dst.exists() or dst.is_symlink():
         dst.unlink()
     if use_symlinks:
-        dst.symlink_to(src.resolve())
-    else:
-        import shutil
+        try:
+            # Relative target: the split stays valid after clone/move to another machine.
+            dst.symlink_to(os.path.relpath(src, dst.parent))
+            return
+        except (OSError, ValueError):  # no symlink privilege (Windows) or src on another drive
+            pass
+    shutil.copy2(src, dst)
 
-        shutil.copy2(src, dst)
 
-
-def _write_yaml(path: Path, dataset_root: Path, train_dir: str, val_dir: str) -> None:
+def _write_yaml(path: Path, train_dir: str, val_dir: str) -> None:
+    # No "path" key: Ultralytics then resolves train/val against the YAML's own directory.
     content = {
-        "path": str(dataset_root.resolve()),
         "train": train_dir,
         "val": val_dir,
         "names": {
@@ -67,7 +71,7 @@ def _write_yaml(path: Path, dataset_root: Path, train_dir: str, val_dir: str) ->
             14: "swimming-pool",
         },
     }
-    path.write_text(yaml.dump(content, sort_keys=False))
+    path.write_text(yaml.dump(content, sort_keys=False), encoding="utf-8")
 
 
 def create_dota128_holdout(
@@ -102,11 +106,11 @@ def create_dota128_holdout(
             lbl = _label_for(img, source)
             _link_or_copy(lbl, out / "labels" / split_name / lbl.name, use_symlinks)
 
-    _write_yaml(out / "dota128_holdout_train.yaml", out, "images/train", "images/select")
-    _write_yaml(out / "dota128_holdout_select.yaml", out, "images/train", "images/select")
-    _write_yaml(out / "dota128_holdout_test.yaml", out, "images/train", "images/test")
-    _write_yaml(out / "dota128_holdout_train.yaml", out, "images/train", "images/train")
-    _write_yaml(out / "dota128_holdout_bn.yaml", out, "images/train", "images/train")
+    _write_yaml(out / "dota128_holdout_train.yaml", "images/train", "images/select")
+    _write_yaml(out / "dota128_holdout_select.yaml", "images/train", "images/select")
+    _write_yaml(out / "dota128_holdout_test.yaml", "images/train", "images/test")
+    _write_yaml(out / "dota128_holdout_train.yaml", "images/train", "images/train")
+    _write_yaml(out / "dota128_holdout_bn.yaml", "images/train", "images/train")
 
     manifest = {
         "source": str(source),
