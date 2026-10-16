@@ -36,9 +36,11 @@ results/summaries/*
 !results/summaries/low-rank_*.json
 !results/summaries/phase3c_comparison_table.csv
 !results/summaries/phase3c_report.json
+!results/summaries/frontier_*.json
 results/reports/*
 !results/reports/.gitkeep
 !results/reports/qgeocompress_phase3*.md
+!results/reports/qgeocompress_frontier_*.md
 
 # Generated hold-out split (symlinks; regenerate via create_dota128_holdout.py)
 datasets/dota128_holdout/
