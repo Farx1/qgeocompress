@@ -6,15 +6,22 @@ on:
   # All PRs, including stacked ones whose base is another feature branch.
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: pip install -e ".[dev]"
@@ -23,15 +30,16 @@ jobs:
         run: ruff check .
 
       - name: Run tests
-        run: pytest -q
+        # Threshold = measured line coverage of the mocked suite (56.1%), rounded down.
+        run: pytest -q --cov=qgeocompress --cov-report=term --cov-fail-under=56
 
   real-model:
     # Runs the unmocked pipeline against a real YOLO11n-OBB checkpoint (~2 min).
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
 
