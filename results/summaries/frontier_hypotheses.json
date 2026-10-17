@@ -14,7 +14,8 @@
       "delta_ci_high": 0.0,
       "ece": 0.043736,
       "cer08": 0.018182,
-      "gate": "reference"
+      "gate": "reference",
+      "verdict_ci": "reference"
     },
     {
       "arm": "control: baseline + BN recal",
@@ -28,7 +29,8 @@
       "layers_replaced": 0,
       "ece": 0.04218,
       "cer08": 0.016492,
-      "gate": "methodologically_valid"
+      "gate": "methodologically_valid",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H1 plain-svd 3x3 r=0.7",
@@ -42,7 +44,8 @@
       "layers_replaced": 28,
       "ece": 0.042628,
       "cer08": 0.029851,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H1 plain-svd 3x3 r=0.5",
@@ -56,7 +59,8 @@
       "layers_replaced": 28,
       "ece": 0.025664,
       "cer08": 0.307692,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H1 plain-svd 3x3 r=0.3",
@@ -70,7 +74,8 @@
       "layers_replaced": 28,
       "ece": 0.003059,
       "cer08": 0.0,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H3 data-aware 3x3 r=0.7",
@@ -84,7 +89,8 @@
       "layers_replaced": 28,
       "ece": 0.067963,
       "cer08": 0.012658,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H3 data-aware 3x3 r=0.5",
@@ -98,7 +104,8 @@
       "layers_replaced": 28,
       "ece": 0.143309,
       "cer08": 0.016129,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H3 data-aware 3x3 r=0.3",
@@ -112,7 +119,8 @@
       "layers_replaced": 28,
       "ece": 0.111293,
       "cer08": 0.0,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H2+H3 data-aware 3x3+1x1 r=0.7",
@@ -126,7 +134,8 @@
       "layers_replaced": 30,
       "ece": 0.071024,
       "cer08": 0.01897,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H2+H3 data-aware 3x3+1x1 r=0.5",
@@ -140,7 +149,8 @@
       "layers_replaced": 51,
       "ece": 0.265752,
       "cer08": 0.0,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H2+H3 data-aware 3x3+1x1 r=0.3",
@@ -154,7 +164,8 @@
       "layers_replaced": 61,
       "ece": 0.005211,
       "cer08": 0.0,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H4 energy tau=0.99",
@@ -168,7 +179,8 @@
       "layers_replaced": 48,
       "ece": 0.0786,
       "cer08": 0.017284,
-      "gate": "deployable_compression_candidate"
+      "gate": "deployable_compression_candidate",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H4 energy tau=0.95",
@@ -182,7 +194,8 @@
       "layers_replaced": 61,
       "ece": 0.155747,
       "cer08": 0.0,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H4 energy tau=0.9",
@@ -196,7 +209,8 @@
       "layers_replaced": 61,
       "ece": 0.002251,
       "cer08": 0.0,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H4 budget 10%",
@@ -210,7 +224,8 @@
       "layers_replaced": 10,
       "ece": 0.04625,
       "cer08": 0.023659,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H4 budget 20%",
@@ -224,7 +239,8 @@
       "layers_replaced": 20,
       "ece": 0.062767,
       "cer08": 0.022267,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H4 budget 30%",
@@ -238,7 +254,8 @@
       "layers_replaced": 30,
       "ece": 0.137328,
       "cer08": 0.007194,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H5 budget 10% + importance",
@@ -252,7 +269,8 @@
       "layers_replaced": 10,
       "ece": 0.046849,
       "cer08": 0.017725,
-      "gate": "deployable_compression_candidate"
+      "gate": "deployable_compression_candidate",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H5 budget 20% + importance",
@@ -266,7 +284,8 @@
       "layers_replaced": 21,
       "ece": 0.055482,
       "cer08": 0.021886,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H5 budget 30% + importance",
@@ -280,7 +299,8 @@
       "layers_replaced": 33,
       "ece": 0.069285,
       "cer08": 0.016032,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H6 sequential 3x3 r=0.5",
@@ -294,7 +314,8 @@
       "layers_replaced": 28,
       "ece": 0.11444,
       "cer08": 0.021739,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H6 sequential budget 10% + importance",
@@ -308,7 +329,8 @@
       "layers_replaced": 10,
       "ece": 0.048109,
       "cer08": 0.016692,
-      "gate": "deployable_compression_candidate"
+      "gate": "deployable_compression_candidate",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H6 sequential budget 20% + importance",
@@ -322,7 +344,8 @@
       "layers_replaced": 21,
       "ece": 0.059742,
       "cer08": 0.023256,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "H6 sequential budget 30% + importance",
@@ -336,7 +359,8 @@
       "layers_replaced": 33,
       "ece": 0.071569,
       "cer08": 0.016908,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     }
   ]
 }

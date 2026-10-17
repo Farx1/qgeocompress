@@ -155,6 +155,20 @@ Four hypotheses, each isolated on the same split
 | **Energy-threshold ranks (τ)** | Rejected | τ=0.95 gives −44.7% params at mAP50 **0.057**. A per-layer energy threshold ignores both the parameter cost of a rank and how much the layer matters downstream. |
 | **Feature distillation recovery** | Rejected here | Label-free distillation from the uncompressed teacher moved mAP50 by +0.019 / −0.066 / +0.044 across three budgets — inside the noise. Implemented and documented in `compression/distillation.py`, not part of the recommended path. |
 
+
+Committed run (`frontier_study.py --preset hypotheses`, CPU, 80 test images, baseline repo-AP mAP50 0.8943), best arm per hypothesis by Δ. `Gate (CI low)` applies the same gate to the lower bound of the paired CI: **no factorized arm passes it**, and the BN-recal-only control already costs most of the drop.
+
+| Hypothesis | Best arm | Params Δ | Δ mAP50 [95% CI] | Gate (point) | Gate (CI low) |
+| ---------- | -------- | -------: | ---------------- | ------------ | ------------- |
+| BN recal only (control) | control: baseline + BN recal | 0.00% | -0.0770 [-0.1508, -0.0218] | methodologically_valid | rejected |
+| H1 plain SVD 3x3 | H1 plain-svd 3x3 r=0.7 | −8.52% | -0.1789 [-0.2639, -0.1001] | rejected | rejected |
+| H3 data-aware 3x3 | H3 data-aware 3x3 r=0.7 | −8.52% | -0.1170 [-0.2205, -0.0533] | rejected | rejected |
+| H2+H3 data-aware 3x3+1x1 | H2+H3 data-aware 3x3+1x1 r=0.7 | −8.74% | -0.1206 [-0.2239, -0.0538] | rejected | rejected |
+| H4 energy threshold | H4 energy tau=0.99 | −18.27% | -0.0891 [-0.1888, -0.0067] | deployable_compression_candidate | rejected |
+| H4 budget | H4 budget 10% | −16.86% | -0.1115 [-0.1781, -0.0438] | rejected | rejected |
+| H5 budget + importance | H5 budget 10% + importance | −17.15% | -0.0857 [-0.1552, -0.0242] | deployable_compression_candidate | rejected |
+| H6 sequential | H6 sequential budget 10% + importance | −17.15% | -0.0808 [-0.1553, -0.0237] | deployable_compression_candidate | rejected |
+
 ### Experimental / incomplete
 
 - **Structural inference** — requires `no-fuse` path (`obb_validate.py`, `system_metrics.py`); use collapsed export for ONNX/TorchScript
@@ -245,6 +259,8 @@ pytest -q
 ```
 
 DOTA128 images and labels are **included in the repository** under `datasets/dota128/`. No external download is required for the MVP test suite.
+
+> **Windows:** the hold-out splits (`datasets/dota128_power/`) are committed as relative symlinks. With `core.symlinks=false` (the Git for Windows default) they check out as small text files and loading fails with "symlink stub". Fix: enable Developer Mode, `git config core.symlinks true`, `git checkout -- datasets/`; or regenerate the split with `python scripts/create_dota128_holdout.py --copy` and the sizes from its `holdout_manifest.json`.
 
 ### 2. Prepare dataset (optional)
 

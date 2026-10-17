@@ -6,6 +6,7 @@ from qgeocompress.evaluation.gt_matching import (
     axis_aligned_iou,
     compute_pairwise_iou,
     match_predictions_to_gt,
+    reject_symlink_stub,
 )
 
 
@@ -80,3 +81,13 @@ def test_compute_pairwise_iou_modes():
     a = _square(0, 0, 10)
     b = _square(1, 1, 8)
     assert compute_pairwise_iou(a, b, iou_mode="axis_aligned") > 0.5
+
+
+def test_reject_symlink_stub(tmp_path):
+    stub = tmp_path / "a.jpg"
+    stub.write_text("../../../dota128/images/train/a.jpg")
+    with pytest.raises(RuntimeError, match="core.symlinks"):
+        reject_symlink_stub(stub)
+    real = tmp_path / "b.jpg"
+    real.write_bytes(b"0" * 2000)
+    reject_symlink_stub(real)
