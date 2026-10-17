@@ -63,6 +63,22 @@ def _image_extensions() -> set[str]:
     return {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
 
 
+def reject_symlink_stub(path: Path) -> None:
+    """Fail loudly on a symlink checked out as a text file (Windows, core.symlinks=false).
+
+    Otherwise the run fails later with a FileNotFoundError that hides the cause.
+    """
+    # shortcut: the split's links are always relative ("../..."); widen if absolute links appear.
+    if path.is_file() and path.stat().st_size < 1024 and path.read_bytes().startswith(b"../"):
+        raise RuntimeError(
+            f"{path} is a symlink stub, not a file (git checked it out with core.symlinks=false). "
+            "Fix: `git config core.symlinks true` then `git checkout -- datasets/` "
+            "(Windows needs Developer Mode), or regenerate the split with "
+            "`python scripts/create_dota128_holdout.py --copy` with the --out/--train/--select/--test "
+            "recorded in the split's holdout_manifest.json."
+        )
+
+
 def list_val_images(
     dataset: str | None = None,
     data_yaml: str | Path | None = None,
@@ -84,12 +100,16 @@ def list_val_images(
                 p = Path(line.strip())
                 if p.suffix.lower() in exts and p.exists():
                     images.append((p.stem, p))
+        if images:
+            reject_symlink_stub(images[0][1])
         return images
 
     if root.is_dir():
         for p in sorted(root.rglob("*")):
             if p.suffix.lower() in exts:
                 images.append((p.stem, p))
+        if images:
+            reject_symlink_stub(images[0][1])
         return images
 
     raise FileNotFoundError(f"Could not resolve validation images from {val_path}")

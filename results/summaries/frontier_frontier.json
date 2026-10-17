@@ -14,7 +14,8 @@
       "delta_ci_high": 0.0,
       "ece": 0.043736,
       "cer08": 0.018182,
-      "gate": "reference"
+      "gate": "reference",
+      "verdict_ci": "reference"
     },
     {
       "arm": "control: baseline + BN recal",
@@ -28,7 +29,8 @@
       "layers_replaced": 0,
       "ece": 0.04218,
       "cer08": 0.016492,
-      "gate": "methodologically_valid"
+      "gate": "methodologically_valid",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "old plain-svd r=0.95",
@@ -42,7 +44,8 @@
       "layers_replaced": 5,
       "ece": 0.051427,
       "cer08": 0.016871,
-      "gate": "methodologically_valid"
+      "gate": "methodologically_valid",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "old plain-svd r=0.9",
@@ -56,7 +59,8 @@
       "layers_replaced": 21,
       "ece": 0.050252,
       "cer08": 0.019078,
-      "gate": "methodologically_valid"
+      "gate": "methodologically_valid",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "old plain-svd r=0.84",
@@ -70,7 +74,8 @@
       "layers_replaced": 25,
       "ece": 0.051131,
       "cer08": 0.019646,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "old plain-svd r=0.8",
@@ -84,7 +89,8 @@
       "layers_replaced": 28,
       "ece": 0.049026,
       "cer08": 0.044186,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "old plain-svd r=0.75",
@@ -98,7 +104,8 @@
       "layers_replaced": 28,
       "ece": 0.045112,
       "cer08": 0.049412,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "old plain-svd r=0.7",
@@ -112,7 +119,8 @@
       "layers_replaced": 28,
       "ece": 0.042628,
       "cer08": 0.029851,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "new data-aware budget 5%",
@@ -126,7 +134,8 @@
       "layers_replaced": 9,
       "ece": 0.045996,
       "cer08": 0.017964,
-      "gate": "deployable_compression_candidate"
+      "gate": "deployable_compression_candidate",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "new data-aware budget 8%",
@@ -140,7 +149,8 @@
       "layers_replaced": 9,
       "ece": 0.045917,
       "cer08": 0.016467,
-      "gate": "deployable_compression_candidate"
+      "gate": "deployable_compression_candidate",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "new data-aware budget 12%",
@@ -154,7 +164,8 @@
       "layers_replaced": 12,
       "ece": 0.046742,
       "cer08": 0.016641,
-      "gate": "deployable_compression_candidate"
+      "gate": "deployable_compression_candidate",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "new data-aware budget 16%",
@@ -168,7 +179,8 @@
       "layers_replaced": 14,
       "ece": 0.045839,
       "cer08": 0.017991,
-      "gate": "deployable_compression_candidate"
+      "gate": "deployable_compression_candidate",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "new data-aware budget 20%",
@@ -182,7 +194,8 @@
       "layers_replaced": 21,
       "ece": 0.055482,
       "cer08": 0.021886,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "new data-aware budget 25%",
@@ -196,7 +209,8 @@
       "layers_replaced": 28,
       "ece": 0.060459,
       "cer08": 0.026132,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     },
     {
       "arm": "new data-aware budget 30%",
@@ -210,7 +224,8 @@
       "layers_replaced": 33,
       "ece": 0.069285,
       "cer08": 0.016032,
-      "gate": "rejected"
+      "gate": "rejected",
+      "verdict_ci": "rejected"
     }
   ]
 }
