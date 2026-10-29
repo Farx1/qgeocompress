@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -81,3 +82,34 @@ def test_rank_for_energy_is_monotone():
     ranks = [rank_for_energy(conv, e, None) for e in (0.5, 0.9, 0.99)]
     assert ranks == sorted(ranks)
     assert ranks[-1] <= 16
+
+
+# --- Eckart-Young optimality (docs/THEORY.md §3) -----------------------------------------
+
+
+def test_full_rank_factorization_reproduces_the_layer_exactly():
+    torch.manual_seed(0)
+    conv = nn.Conv2d(6, 8, 3, padding=1, bias=False)
+    x = torch.randn(2, 6, 9, 9)
+    full = min(8, 6 * 9)
+    for gram in (None, collect_patch_gram(conv, [x])):
+        out = _apply(conv, *data_aware_factors(conv, full, gram), x)
+        assert torch.allclose(out, conv(x), atol=1e-4)
+
+
+@pytest.mark.parametrize("seed", range(5))
+def test_data_aware_attains_the_eckart_young_optimum_and_never_loses_to_plain_svd(seed):
+    """||(W - W_hat) X||_F equals the tail of svd(W L) and is <= the plain-SVD error, on random X."""
+    torch.manual_seed(seed)
+    conv = nn.Conv2d(8, 12, 3, padding=1, bias=False)
+    mix = torch.randn(8, 8)  # correlated channels: X X^T far from identity
+    x = torch.einsum("oc,bchw->bohw", mix, torch.randn(3, 8, 10, 10))
+    gram = collect_patch_gram(conv, [x])
+    ref = conv(x).detach()
+    spectrum = torch.linalg.svdvals(conv.weight.detach().reshape(12, -1).double() @ torch.linalg.cholesky(gram))
+    for rank in (1, 4, 8):
+        err_aware = float((ref - _apply(conv, *data_aware_factors(conv, rank, gram), x)).norm())
+        err_plain = float((ref - _apply(conv, *data_aware_factors(conv, rank, None), x)).norm())
+        optimum = float(spectrum[rank:].pow(2).sum().sqrt())
+        assert err_aware == pytest.approx(optimum, rel=1e-3)
+        assert err_aware <= err_plain * (1 + 1e-4)
