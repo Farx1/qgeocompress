@@ -86,6 +86,15 @@ def create_dota128_holdout(
     """Create train/select/test hold-out split with symlinks."""
     source = source.resolve()
     out = out.resolve()
+    counts = (train_n, select_n, test_n)
+    if any(isinstance(n, bool) or not isinstance(n, int) or n < 0 for n in counts):
+        raise ValueError("Split sizes must be non-negative integers")
+    if sum(counts) == 0:
+        raise ValueError("At least one image must be requested")
+    if source == out or source in out.parents or out in source.parents:
+        raise ValueError("Source and output directories must not overlap")
+    if out.exists() and (not out.is_dir() or any(out.iterdir())):
+        raise FileExistsError(f"Output must be absent or empty: {out}")
     images = _collect_images(source)
     total = train_n + select_n + test_n
     if len(images) < total:
@@ -99,12 +108,16 @@ def create_dota128_holdout(
     test_imgs = shuffled[train_n + select_n : total]
 
     splits = {"train": train_imgs, "select": select_imgs, "test": test_imgs}
+    image_root = source / "images" / "train"
+    # Resolve every required label before creating any output.
+    labels = {img: _label_for(img, source) for imgs in splits.values() for img in imgs}
     for split_name, split_imgs in splits.items():
+        (out / "images" / split_name).mkdir(parents=True, exist_ok=True)
+        (out / "labels" / split_name).mkdir(parents=True, exist_ok=True)
         for img in split_imgs:
-            rel = img.name
+            rel = img.relative_to(image_root)
             _link_or_copy(img, out / "images" / split_name / rel, use_symlinks)
-            lbl = _label_for(img, source)
-            _link_or_copy(lbl, out / "labels" / split_name / lbl.name, use_symlinks)
+            _link_or_copy(labels[img], out / "labels" / split_name / rel.with_suffix(".txt"), use_symlinks)
 
     _write_yaml(out / "dota128_holdout_train.yaml", "images/train", "images/select")
     _write_yaml(out / "dota128_holdout_select.yaml", "images/train", "images/select")
@@ -119,9 +132,9 @@ def create_dota128_holdout(
         "train_n": train_n,
         "select_n": select_n,
         "test_n": test_n,
-        "train_images": [p.name for p in train_imgs],
-        "select_images": [p.name for p in select_imgs],
-        "test_images": [p.name for p in test_imgs],
+        "train_images": [p.relative_to(image_root).as_posix() for p in train_imgs],
+        "select_images": [p.relative_to(image_root).as_posix() for p in select_imgs],
+        "test_images": [p.relative_to(image_root).as_posix() for p in test_imgs],
         "yaml_files": {
             "train": str(out / "dota128_holdout_train.yaml"),
             "select": str(out / "dota128_holdout_select.yaml"),
@@ -160,3 +173,4 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
+
