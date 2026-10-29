@@ -83,7 +83,7 @@ python scripts/frontier_study.py --preset hypotheses  # ~15 min — which idea e
 ./scripts/run_headtohead.sh                          # ~25 min — layer-selection strategies
 ```
 
-Reports: [`results/reports/qgeocompress_phase3c_comparison.md`](results/reports/qgeocompress_phase3c_comparison.md) · [`results/reports/qgeocompress_phase3b_holdout.md`](results/reports/qgeocompress_phase3b_holdout.md) · [`results/reports/qgeocompress_phase3b_summary.md`](results/reports/qgeocompress_phase3b_summary.md) · Plan: [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) · Phase 3: [`docs/PHASE3_PLAN.md`](docs/PHASE3_PLAN.md) · GPU: [`docs/GPU_RUNBOOK.md`](docs/GPU_RUNBOOK.md)
+Reports: [`results/reports/qgeocompress_phase3c_comparison.md`](results/reports/qgeocompress_phase3c_comparison.md) · [`results/reports/qgeocompress_phase3b_holdout.md`](results/reports/qgeocompress_phase3b_holdout.md) · [`results/reports/qgeocompress_phase3b_summary.md`](results/reports/qgeocompress_phase3b_summary.md) · Plan: [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) · Theory: [`docs/THEORY.md`](docs/THEORY.md) · Phase 3: [`docs/PHASE3_PLAN.md`](docs/PHASE3_PLAN.md) · GPU: [`docs/GPU_RUNBOOK.md`](docs/GPU_RUNBOOK.md)
 
 ---
 
@@ -389,7 +389,7 @@ python scripts/compress_model.py \
   --sensitivity-file results/summaries/structural_layer_sensitivity.json
 ```
 
-`--quantum-backend`: `auto` (QAOA if PennyLane installed, else classical) · `qaoa` (require PennyLane) · `classical` (exact brute-force / greedy reference). Full formulation and honest scope in [`docs/QUANTUM.md`](docs/QUANTUM.md).
+`--quantum-backend`: `auto` (QAOA if PennyLane installed, else classical) · `qaoa` (require PennyLane) · `classical` (exact brute-force / greedy reference). Full formulation and honest scope in [`docs/QUANTUM.md`](docs/QUANTUM.md). Penalty bound and QAOA guarantees: [`docs/THEORY.md`](docs/THEORY.md).
 
 ### 7. Hold-out validation (recommended for credible results)
 
