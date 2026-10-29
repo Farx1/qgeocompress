@@ -541,4 +541,6 @@ Contributions and feedback welcome while the project is active.
 
 ## License
 
-MIT
+Code: MIT, see [LICENSE](LICENSE).
+
+The bundled `datasets/dota128/` sample (and the `datasets/dota128_power/` split derived from it) is **not** covered by the MIT license: it is redistributed from Ultralytics under GPL-3.0 (see [datasets/dota128/LICENSE](datasets/dota128/LICENSE)), and the underlying images come from [DOTA](https://captain-whu.github.io/DOTA/), which is restricted to academic, non-commercial use.
