@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import matplotlib.pyplot as plt
+import matplotlib
+
+matplotlib.use("Agg")  # headless: no Tk/GUI backend needed for saved figures
+import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd
 
 from qgeocompress.utils.config import project_root, save_json
@@ -442,7 +445,7 @@ def generate_report(
     phase2a = generate_phase2a_summary(included, excluded)
     summary_md = render_phase2a_summary_markdown(phase2a)
     summary_path = Path(results_dir) / "phase2a_summary.md"
-    summary_path.write_text(summary_md)
+    summary_path.write_text(summary_md, encoding="utf-8")
 
     evaluable = [r for r in included if is_evaluable_run(r)]
     skipped = [r for r in all_runs if r.get("status") in _SKIP_STATUSES or r in excluded]

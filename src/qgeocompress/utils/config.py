@@ -13,7 +13,7 @@ def project_root() -> Path:
 
 
 def load_yaml(path: str | Path) -> dict[str, Any]:
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
 
@@ -42,11 +42,11 @@ def make_run_id(prefix: str, config: dict[str, Any]) -> str:
 def save_json(data: dict[str, Any], path: str | Path) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, default=str)
     return path
 
 
 def load_json(path: str | Path) -> dict[str, Any]:
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)

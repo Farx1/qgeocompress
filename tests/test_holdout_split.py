@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -41,6 +42,9 @@ def test_create_holdout_split_counts(tiny_dota, tmp_path):
     assert len(list((out / "images" / "select").iterdir())) == 24
     assert len(list((out / "images" / "test").iterdir())) == 24
     assert (out / "dota128_holdout_test.yaml").exists()
+    link = next((out / "images" / "train").iterdir())
+    assert not link.is_symlink() or not Path(os.readlink(link)).is_absolute()
+    assert "path" not in (out / "dota128_holdout_test.yaml").read_text(encoding="utf-8")
 
 
 def test_holdout_yaml_splits_disjoint(tiny_dota, tmp_path):

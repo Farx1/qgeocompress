@@ -3,7 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import matplotlib.pyplot as plt
+import matplotlib
+
+matplotlib.use("Agg")  # headless: no Tk/GUI backend needed for saved figures
+import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np
 
 from qgeocompress.calibration.ece import confident_error_rate, expected_calibration_error

@@ -1,3 +1,6 @@
+import itertools
+import random
+
 import pytest
 
 from qgeocompress.compression.layer_sensitivity import select_layers
@@ -160,3 +163,56 @@ def test_classical_backend_is_not_prefiltered():
     _, meta = select_layers_by_qaoa(_probe(28), max_layers=5, backend="classical", return_meta=True)
     assert meta["qaoa_prefiltered_from"] is None
     assert meta["num_variables"] == 28
+
+
+# --- Penalty equivalence (docs/THEORY.md §1), checked exhaustively -----------------------
+
+
+def _linear_costs(meta: dict) -> list[float]:
+    """c_i = -alpha*g_i + beta*d_i: the objective the cardinality penalty is added to."""
+    a, b = meta["gain_weight"], meta["drop_penalty"]
+    return [-a * g + b * d for g, d in zip(meta["normalized_gains"], meta["normalized_drops"], strict=True)]
+
+
+def _qubo_argmin(q: dict, n: int) -> set[int]:
+    best = min(itertools.product((0, 1), repeat=n), key=lambda bits: qubo_energy(q, bits))
+    return {i for i, b in enumerate(best) if b}
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_qubo_argmin_equals_constrained_argmin_above_penalty_bound(seed):
+    """gamma > max_i |c_i|  =>  argmin QUBO == argmin_{|S|=k} sum_{i in S} c_i (brute force, n <= 12)."""
+    rng = random.Random(seed)
+    n = 3 + seed % 10
+    k = rng.randint(0, n)
+    rows = [
+        {"layer_name": f"l{i}", "param_gain_abs": rng.uniform(1e3, 1e5), "map50_drop": rng.uniform(0.0, 0.05)}
+        for i in range(n)
+    ]
+    alpha, beta = rng.uniform(0.5, 2.0), rng.uniform(0.5, 3.0)
+    _, _, meta = build_selection_qubo(rows, k, gain_weight=alpha, drop_penalty=beta)
+    costs = _linear_costs(meta)
+    gamma = max(abs(c) for c in costs) * 1.01 + 1e-9
+
+    q, _, _ = build_selection_qubo(rows, k, gain_weight=alpha, drop_penalty=beta, cardinality_penalty=gamma)
+    constrained = min(itertools.combinations(range(n), k), key=lambda s: sum(costs[i] for i in s))
+    assert _qubo_argmin(q, n) == set(constrained)
+
+
+def test_default_penalty_is_below_the_bound_so_the_budget_is_soft():
+    """Repo defaults (alpha=1, beta=2, gamma=1.5): gamma < max|c_i| = 2 can break |S| = k.
+
+    One layer with no savings and the worst drop has c = 2 > gamma, so dropping it
+    from the k-set lowers the energy by 2 - 1.5: the solver returns k - 1 layers.
+    """
+    rows = [
+        {"layer_name": "costly", "param_gain_abs": 0.0, "map50_drop": 0.05},
+        {"layer_name": "cheap", "param_gain_abs": 1e5, "map50_drop": 0.0},
+    ]
+    q, _, meta = build_selection_qubo(rows, 2)
+    assert max(abs(c) for c in _linear_costs(meta)) > meta["cardinality_penalty"]
+    assert _qubo_argmin(q, 2) == {1}
+    assert select_layers_by_qaoa(rows, 2, backend="classical") == ["cheap"]
+
+    q_ok, _, _ = build_selection_qubo(rows, 2, cardinality_penalty=2.01)
+    assert _qubo_argmin(q_ok, 2) == {0, 1}

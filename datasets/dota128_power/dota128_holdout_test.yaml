@@ -1,4 +1,3 @@
-path: /home/user/qgeocompress/datasets/dota128_power
 train: images/train
 val: images/test
 names:
