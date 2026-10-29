@@ -20,12 +20,12 @@ Build a **reliability-preserving, quantum-inspired compression stack** for geosp
 
 | Criterion | Target | Status |
 | --------- | ------ | ------ |
-| Hold-out deployable candidate | mAP50 drop ≤ 0.10, CER@0.8 Δ ≤ +0.02, params − ≥ 2% | **Met** (pareto top-5: mAP50 0.933, −5.63% params) |
+| Hold-out deployable candidate | mAP50 drop ≤ 0.10, CER@0.8 Δ ≤ +0.02, params − ≥ 2% | **Met** (pareto top-5: mAP50 0.909, −5.63% params) |
 | Negative result documented | Full structural r=0.84 collapse | **Met** (mAP50 ≈ 0.27) |
 | Reliability metrics | GT-matched ECE + CER@0.8 | **Met** (Phase 2B + hold-out) |
 | Reproducible pipeline | Scripts + Valohai DAG + E2E shell | **Met** |
 | Export stack | Multi-format CLI + manifest | **Met** (this sprint) |
-| Test coverage | pytest green | **Met** (~105+ tests) |
+| Test coverage | pytest green | **Met** (128 unit + 5 real-model tests) |
 
 ### Out of scope (explicit future work)
 
@@ -53,7 +53,7 @@ Build a **reliability-preserving, quantum-inspired compression stack** for geosp
 | **2A** | In-place SVD low-rank (`low_rank.py`) | Viable rank frontier r ≈ 0.82–0.84 |
 | **2B** | GT-matched calibration (`evaluate_calibration.py`) | ECE, CER@0.8, selective prediction |
 
-**Artifacts:** `results/reports/qgeocompress_phase2_report.md`, calibration JSONs in `results/summaries/`
+**Artifacts:** calibration and low-rank JSONs in `results/summaries/` (`calibration_low_rank_*.json`, `low-rank_*.json`); the Markdown summary from `make_calibration_report.py` is not committed
 
 ### Phase 3 — Structural compression (done)
 
@@ -87,9 +87,10 @@ into the compression pipeline, with a classical exact solver as ground truth.
 | Tests | `tests/test_quantum_selection.py` (11 tests) | Done |
 | Docs | `docs/QUANTUM.md` | Done |
 
-**Result on hold-out (QAOA simulator, 12-layer subset, k=5):** mAP50 **0.915**,
-**−5.36% params**, gate **`deployable_compression_candidate`** — comparable to
-pareto top-5. Classical greedy QUBO on 28 layers under-performed (−0.21% params).
+**Result on hold-out (QAOA simulator, 16-variable prefilter, k=5):** mAP50 **0.910**,
+**−5.19% params**, gate **`deployable_compression_candidate`** — comparable to
+pareto top-5 (0.909, −5.63%). The classical exact QUBO picks the same layers as top-5
+sensitivity (0.875, −5.04%). Source: `results/summaries/phase3c_comparison_table.csv`.
 No quantum *advantage* claimed at this scale; value is a portable QUBO encoding.
 See `docs/QUANTUM.md`.
 
@@ -191,7 +192,7 @@ vh pipeline run qgc-post-training-compression --adhoc
 - [x] Multi-format export CLI + manifest
 - [x] Collapsed structural fallback for ONNX/TorchScript attempts
 - [x] Quantum layer selection (QAOA) + classical reference (`docs/QUANTUM.md`)
-- [x] CI green (`pytest -q`, ~116 tests)
+- [x] CI green (`pytest -q`, 128 tests + 5 `slow`)
 - [x] `docs/PROJECT_PLAN.md` (this file)
 - [x] README + PHASE3_PLAN updated
 
