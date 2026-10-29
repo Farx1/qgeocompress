@@ -60,6 +60,7 @@ from qgeocompress.evaluation.gt_matching import (
     match_dataset_predictions,
     run_yolo_predictions,
 )
+from qgeocompress.evaluation.reliability_gate import evaluate_reliability_gate
 from qgeocompress.utils.config import project_root, save_json
 
 
@@ -97,7 +98,7 @@ def build_variant(
     """
     model = YOLO(weights, task="obb")
     original = sum(p.numel() for p in model.model.parameters())
-    saved = 0
+    replaced = 0
 
     for name, rank in ranks.items():
         conv = model.model.get_submodule(name)
@@ -108,14 +109,14 @@ def build_variant(
             continue
         down, up = data_aware_factors(conv, rank, gram)
         _set_module(model.model, name, StructuralLowRankConv2d.from_factors(conv, down, up))
-        saved += before - after
+        replaced += 1
 
     compressed = sum(p.numel() for p in model.model.parameters())
     return model, {
         "original_params": original,
         "compressed_params": compressed,
         "param_reduction_pct": round(100.0 * (original - compressed) / original, 3),
-        "layers_replaced": len(ranks),
+        "layers_replaced": replaced,
     }
 
 
@@ -150,6 +151,7 @@ def build_variant_sequential(
     reference = YOLO(weights, task="obb")
     model = YOLO(weights, task="obb")
     original = sum(p.numel() for p in model.model.parameters())
+    replaced = 0
 
     for name, rank in ranks.items():
         conv = model.model.get_submodule(name)
@@ -162,13 +164,14 @@ def build_variant_sequential(
         fitted = drift_corrected_weight(ref_conv, cross, gram)
         down, up = data_aware_factors(ref_conv, rank, gram, weight=fitted)
         _set_module(model.model, name, StructuralLowRankConv2d.from_factors(conv, down, up))
+        replaced += 1
 
     compressed = sum(p.numel() for p in model.model.parameters())
     return model, {
         "original_params": original,
         "compressed_params": compressed,
         "param_reduction_pct": round(100.0 * (original - compressed) / original, 3),
-        "layers_replaced": len(ranks),
+        "layers_replaced": replaced,
     }
 
 
@@ -207,20 +210,22 @@ def measure_importance(
     return sensitivity
 
 
-def evaluate(model: YOLO, test_yaml: str, gt: dict, device: str) -> dict[str, Any]:
-    preds = run_yolo_predictions(
-        model, data_yaml=test_yaml, conf_threshold=0.001, imgsz=640, device=device
-    )
-    return per_image_class_records(preds, gt)
-
-
-def reliability(model: YOLO, test_yaml: str, gt: dict, device: str) -> dict[str, float]:
-    """ECE and CER@0.8 — the gate metrics — on the same predictions."""
+def evaluate(model: YOLO, test_yaml: str, gt: dict, device: str) -> tuple[dict[str, Any], dict[str, float]]:
+    """AP records and the gate's reliability metrics (ECE, CER@0.8) from ONE inference pass."""
     preds = run_yolo_predictions(
         model, data_yaml=test_yaml, conf_threshold=0.001, imgsz=640, device=device
     )
     metrics = compute_calibration_metrics(match_dataset_predictions(preds, gt, iou_threshold=0.5))
-    return {"ece": metrics["ece"], "cer08": metrics["confident_error_rate_08"]}
+    return per_image_class_records(preds, gt), {"ece": metrics["ece"], "cer08": metrics["confident_error_rate_08"]}
+
+
+def gate_verdict(base: dict[str, float], cand: dict[str, float], param_reduction_pct: float) -> str:
+    """The project's reliability gate, applied to frontier arms (repo-AP mAP50 on both sides)."""
+    return evaluate_reliability_gate(
+        {"map50": base["map50"], "confident_error_rate_08": base["cer08"]},
+        {"map50": cand["map50"], "confident_error_rate_08": cand["cer08"], "status": "ok"},
+        {"real_param_reduction_pct": param_reduction_pct},
+    )["gate_status"]
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -299,8 +304,9 @@ def main(argv: list[str] | None = None) -> None:
 
     def run_arms(arms: list[dict[str, Any]]) -> None:
         print("scoring baseline")
-        base_records = evaluate(baseline, test_yaml, gt, args.device)
+        base_records, base_rel = evaluate(baseline, test_yaml, gt, args.device)
         base_boot = bootstrap_map50(base_records, n_resamples=args.resamples)
+        base_gate = {"map50": base_boot["map50"], **base_rel}
         rows: list[dict[str, Any]] = [{
             "arm": "baseline",
             "param_reduction_pct": 0.0,
@@ -310,7 +316,8 @@ def main(argv: list[str] | None = None) -> None:
             "delta": 0.0,
             "delta_ci_low": 0.0,
             "delta_ci_high": 0.0,
-            **reliability(baseline, test_yaml, gt, args.device),
+            **base_rel,
+            "gate": "reference",
         }]
 
         for arm in arms:
@@ -322,7 +329,7 @@ def main(argv: list[str] | None = None) -> None:
             recalibrate_batchnorm(
                 model, data_yaml=train_yaml, num_batches=args.bn_batches, device=args.device
             )
-            records = evaluate(model, test_yaml, gt, args.device)
+            records, rel = evaluate(model, test_yaml, gt, args.device)
             boot = bootstrap_map50(records, n_resamples=args.resamples)
             delta = paired_delta_map50(base_records, records, n_resamples=args.resamples)
             rows.append({
@@ -335,19 +342,20 @@ def main(argv: list[str] | None = None) -> None:
                 "delta_ci_low": round(delta["ci_low"], 4),
                 "delta_ci_high": round(delta["ci_high"], 4),
                 "layers_replaced": meta["layers_replaced"],
-                **reliability(model, test_yaml, gt, args.device),
+                **rel,
+                "gate": gate_verdict(base_gate, {"map50": boot["map50"], **rel}, meta["param_reduction_pct"]),
             })
             print(
                 f"{arm['name']:<34} -{meta['param_reduction_pct']:5.2f}% params  "
                 f"mAP50 {boot['map50']:.4f}  delta {delta['delta']:+.4f} "
                 f"[{delta['ci_low']:+.4f}, {delta['ci_high']:+.4f}]  "
-                f"CER@0.8 {rows[-1]['cer08']:.4f}  ({time.time() - started:.0f}s)",
+                f"CER@0.8 {rows[-1]['cer08']:.4f}  {rows[-1]['gate']}  ({time.time() - started:.0f}s)",
                 flush=True,
             )
 
         out = args.out or project_root() / "results" / "summaries" / f"frontier_{args.preset}.json"
         save_json(
-            {"split": str(split), "weights": args.weights, "preset": args.preset, "rows": rows}, out
+            {"split": split.name, "weights": args.weights, "preset": args.preset, "rows": rows}, out
         )
         print(f"\nsaved {out}")
 
@@ -365,8 +373,12 @@ def main(argv: list[str] | None = None) -> None:
             "punishes rare classes. Every arm is scored identically, and `delta` is a **paired** "
             "bootstrap over images, which is the only comparison this sample size supports.",
             "",
-            "| Arm | Params Δ | mAP50 | delta vs baseline (95% CI) | ECE | CER@0.8 |",
-            "| --- | -------: | ----: | -------------------------- | --: | ------: |",
+            "Gate: `evaluate_reliability_gate` with default thresholds (mAP50 drop ≤ 0.10, CER@0.8 rise ≤ 0.02, "
+            "params ≥ 2% for `deployable_compression_candidate`), fed this table's mAP50 and CER@0.8. The "
+            "`control` arm only recalibrates BatchNorm, isolating that step from the factorization.",
+            "",
+            "| Arm | Params Δ | mAP50 | delta vs baseline (95% CI) | ECE | CER@0.8 | Gate |",
+            "| --- | -------: | ----: | -------------------------- | --: | ------: | ---- |",
         ]
         for row in rows:
             ci = (
@@ -375,12 +387,13 @@ def main(argv: list[str] | None = None) -> None:
             )
             lines.append(
                 f"| {row['arm']} | {row['param_reduction_pct']:.2f}% | {row['map50']:.4f} | "
-                f"{ci} | {row['ece']:.4f} | {row['cer08']:.4f} |"
+                f"{ci} | {row['ece']:.4f} | {row['cer08']:.4f} | {row['gate']} |"
             )
         report.write_text("\n".join(lines) + "\n", encoding="utf-8")
         print(f"saved {report}")
 
-    arms: list[dict[str, Any]] = []
+    # Control: same BN recalibration, no factorization — separates the two effects.
+    arms: list[dict[str, Any]] = [{"name": "control: baseline + BN recal", "ranks": {}, "gram": False}]
     if args.preset == "frontier":
         # Old method: plain SVD, uniform ratio, 3x3 only — what the project shipped.
         for r in (0.95, 0.9, 0.84, 0.8, 0.75, 0.7):
