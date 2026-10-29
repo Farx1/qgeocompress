@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Q-GEOCompress: reliability-preserving compression for deployable geospatial AI"
+type: software
+authors:
+  - family-names: Barth
+    given-names: Jules
+repository-code: "https://github.com/Farx1/qgeocompress"
+license: MIT
+version: 0.1.0
+keywords:
+  - geospatial
+  - model compression
+  - low-rank factorization
+  - calibration
+  - QUBO
+  - DOTA
