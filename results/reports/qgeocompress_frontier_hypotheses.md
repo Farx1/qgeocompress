@@ -6,29 +6,31 @@ mAP50 is computed from this repo's own GT matching so it can be bootstrapped; it
 
 Gate: `evaluate_reliability_gate` with default thresholds (mAP50 drop ≤ 0.10, CER@0.8 rise ≤ 0.02, params ≥ 2% for `deployable_compression_candidate`), fed this table's mAP50 and CER@0.8. The `control` arm only recalibrates BatchNorm, isolating that step from the factorization.
 
-| Arm | Params Δ | mAP50 | delta vs baseline (95% CI) | ECE | CER@0.8 | Gate |
-| --- | -------: | ----: | -------------------------- | --: | ------: | ---- |
-| baseline | 0.00% | 0.8943 | reference | 0.0437 | 0.0182 | reference |
-| control: baseline + BN recal | 0.00% | 0.8173 | -0.0770 [-0.1508, -0.0218] | 0.0422 | 0.0165 | methodologically_valid |
-| H1 plain-svd 3x3 r=0.7 | 8.52% | 0.7154 | -0.1789 [-0.2639, -0.1001] | 0.0426 | 0.0299 | rejected |
-| H1 plain-svd 3x3 r=0.5 | 17.58% | 0.3197 | -0.5746 [-0.6791, -0.4710] | 0.0257 | 0.3077 | rejected |
-| H1 plain-svd 3x3 r=0.3 | 27.20% | 0.0000 | -0.8943 [-0.9702, -0.8194] | 0.0031 | 0.0000 | rejected |
-| H3 data-aware 3x3 r=0.7 | 8.52% | 0.7773 | -0.1170 [-0.2205, -0.0533] | 0.0680 | 0.0127 | rejected |
-| H3 data-aware 3x3 r=0.5 | 17.58% | 0.5540 | -0.3403 [-0.4167, -0.2377] | 0.1433 | 0.0161 | rejected |
-| H3 data-aware 3x3 r=0.3 | 27.20% | 0.0282 | -0.8662 [-0.9430, -0.7928] | 0.1113 | 0.0000 | rejected |
-| H2+H3 data-aware 3x3+1x1 r=0.7 | 8.74% | 0.7737 | -0.1206 [-0.2239, -0.0538] | 0.0710 | 0.0190 | rejected |
-| H2+H3 data-aware 3x3+1x1 r=0.5 | 23.80% | 0.4509 | -0.4434 [-0.5389, -0.3283] | 0.2658 | 0.0000 | rejected |
-| H2+H3 data-aware 3x3+1x1 r=0.3 | 46.93% | 0.0005 | -0.8938 [-0.9700, -0.8188] | 0.0052 | 0.0000 | rejected |
-| H4 energy tau=0.99 | 18.27% | 0.8052 | -0.0891 [-0.1888, -0.0067] | 0.0786 | 0.0173 | deployable_compression_candidate |
-| H4 energy tau=0.95 | 44.68% | 0.0568 | -0.8375 [-0.9120, -0.7454] | 0.1557 | 0.0000 | rejected |
-| H4 energy tau=0.9 | 55.90% | 0.0000 | -0.8943 [-0.9702, -0.8195] | 0.0023 | 0.0000 | rejected |
-| H4 budget 10% | 16.86% | 0.7828 | -0.1115 [-0.1781, -0.0438] | 0.0462 | 0.0237 | rejected |
-| H4 budget 20% | 23.92% | 0.7565 | -0.1378 [-0.2174, -0.0736] | 0.0628 | 0.0223 | rejected |
-| H4 budget 30% | 32.12% | 0.7043 | -0.1900 [-0.3053, -0.1185] | 0.1373 | 0.0072 | rejected |
-| H5 budget 10% + importance | 17.15% | 0.8086 | -0.0857 [-0.1552, -0.0242] | 0.0468 | 0.0177 | deployable_compression_candidate |
-| H5 budget 20% + importance | 23.76% | 0.7890 | -0.1053 [-0.1954, -0.0345] | 0.0555 | 0.0219 | rejected |
-| H5 budget 30% + importance | 32.48% | 0.7608 | -0.1335 [-0.2344, -0.0706] | 0.0693 | 0.0160 | rejected |
-| H6 sequential 3x3 r=0.5 | 17.58% | 0.7554 | -0.1389 [-0.2209, -0.0786] | 0.1144 | 0.0217 | rejected |
-| H6 sequential budget 10% + importance | 17.15% | 0.8135 | -0.0808 [-0.1553, -0.0237] | 0.0481 | 0.0167 | deployable_compression_candidate |
-| H6 sequential budget 20% + importance | 23.76% | 0.7630 | -0.1313 [-0.2157, -0.0665] | 0.0597 | 0.0233 | rejected |
-| H6 sequential budget 30% + importance | 32.48% | 0.7426 | -0.1517 [-0.2625, -0.0764] | 0.0716 | 0.0169 | rejected |
+`Gate (CI low)` is the conservative verdict: the same gate fed baseline mAP50 + the lower bound of the delta CI (CER@0.8 has no CI here, so its point value is used). Only arms that pass it are deployable with 95% confidence.
+
+| Arm | Params Δ | mAP50 | delta vs baseline (95% CI) | ECE | CER@0.8 | Gate | Gate (CI low) |
+| --- | -------: | ----: | -------------------------- | --: | ------: | ---- | ------------- |
+| baseline | 0.00% | 0.8943 | reference | 0.0437 | 0.0182 | reference | reference |
+| control: baseline + BN recal | 0.00% | 0.8173 | -0.0770 [-0.1508, -0.0218] | 0.0422 | 0.0165 | methodologically_valid | rejected |
+| H1 plain-svd 3x3 r=0.7 | 8.52% | 0.7154 | -0.1789 [-0.2639, -0.1001] | 0.0426 | 0.0299 | rejected | rejected |
+| H1 plain-svd 3x3 r=0.5 | 17.58% | 0.3197 | -0.5746 [-0.6791, -0.4710] | 0.0257 | 0.3077 | rejected | rejected |
+| H1 plain-svd 3x3 r=0.3 | 27.20% | 0.0000 | -0.8943 [-0.9702, -0.8194] | 0.0031 | 0.0000 | rejected | rejected |
+| H3 data-aware 3x3 r=0.7 | 8.52% | 0.7773 | -0.1170 [-0.2205, -0.0533] | 0.0680 | 0.0127 | rejected | rejected |
+| H3 data-aware 3x3 r=0.5 | 17.58% | 0.5540 | -0.3403 [-0.4167, -0.2377] | 0.1433 | 0.0161 | rejected | rejected |
+| H3 data-aware 3x3 r=0.3 | 27.20% | 0.0282 | -0.8662 [-0.9430, -0.7928] | 0.1113 | 0.0000 | rejected | rejected |
+| H2+H3 data-aware 3x3+1x1 r=0.7 | 8.74% | 0.7737 | -0.1206 [-0.2239, -0.0538] | 0.0710 | 0.0190 | rejected | rejected |
+| H2+H3 data-aware 3x3+1x1 r=0.5 | 23.80% | 0.4509 | -0.4434 [-0.5389, -0.3283] | 0.2658 | 0.0000 | rejected | rejected |
+| H2+H3 data-aware 3x3+1x1 r=0.3 | 46.93% | 0.0005 | -0.8938 [-0.9700, -0.8188] | 0.0052 | 0.0000 | rejected | rejected |
+| H4 energy tau=0.99 | 18.27% | 0.8052 | -0.0891 [-0.1888, -0.0067] | 0.0786 | 0.0173 | deployable_compression_candidate | rejected |
+| H4 energy tau=0.95 | 44.68% | 0.0568 | -0.8375 [-0.9120, -0.7454] | 0.1557 | 0.0000 | rejected | rejected |
+| H4 energy tau=0.9 | 55.90% | 0.0000 | -0.8943 [-0.9702, -0.8195] | 0.0023 | 0.0000 | rejected | rejected |
+| H4 budget 10% | 16.86% | 0.7828 | -0.1115 [-0.1781, -0.0438] | 0.0462 | 0.0237 | rejected | rejected |
+| H4 budget 20% | 23.92% | 0.7565 | -0.1378 [-0.2174, -0.0736] | 0.0628 | 0.0223 | rejected | rejected |
+| H4 budget 30% | 32.12% | 0.7043 | -0.1900 [-0.3053, -0.1185] | 0.1373 | 0.0072 | rejected | rejected |
+| H5 budget 10% + importance | 17.15% | 0.8086 | -0.0857 [-0.1552, -0.0242] | 0.0468 | 0.0177 | deployable_compression_candidate | rejected |
+| H5 budget 20% + importance | 23.76% | 0.7890 | -0.1053 [-0.1954, -0.0345] | 0.0555 | 0.0219 | rejected | rejected |
+| H5 budget 30% + importance | 32.48% | 0.7608 | -0.1335 [-0.2344, -0.0706] | 0.0693 | 0.0160 | rejected | rejected |
+| H6 sequential 3x3 r=0.5 | 17.58% | 0.7554 | -0.1389 [-0.2209, -0.0786] | 0.1144 | 0.0217 | rejected | rejected |
+| H6 sequential budget 10% + importance | 17.15% | 0.8135 | -0.0808 [-0.1553, -0.0237] | 0.0481 | 0.0167 | deployable_compression_candidate | rejected |
+| H6 sequential budget 20% + importance | 23.76% | 0.7630 | -0.1313 [-0.2157, -0.0665] | 0.0597 | 0.0233 | rejected | rejected |
+| H6 sequential budget 30% + importance | 32.48% | 0.7426 | -0.1517 [-0.2625, -0.0764] | 0.0716 | 0.0169 | rejected | rejected |
